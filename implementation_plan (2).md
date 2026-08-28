@@ -99,7 +99,7 @@ Do not put prompts, system prompts or credentials in Redis.
 ### Tasks
 - [ ] Create `LLMProvider` protocol.
 - [ ] Create normalized request/response models.
-- [ ] Implement OpenAI-compatible HTTP adapter.
+- [ ] Implement Gemini-compatible HTTP adapter.
 - [ ] Implement self-hosted HTTP adapter.
 - [ ] Implement optional participant-credential path.
 - [ ] Add provider routing.

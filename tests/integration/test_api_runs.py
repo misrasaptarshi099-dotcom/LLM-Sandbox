@@ -30,7 +30,7 @@ async def test_submit_run_accepted(
     assert await memory_queue.qsize() == 1
     job = await memory_queue.dequeue()
     assert job is not None
-    assert job["run_id"] == data["run_id"]
+    assert str(job.run_id) == data["run_id"]
 
 
 async def test_submit_run_invalid_challenge_returns_404(
