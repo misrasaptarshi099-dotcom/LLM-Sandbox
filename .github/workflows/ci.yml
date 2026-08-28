@@ -31,11 +31,10 @@ jobs:
           enable-cache: true
           version: "latest"
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
-      - name: Install Dependencies
-        run: uv pip install -e ".[dev]"
+      - name: Set up Python and Sync Dependencies
+        run: |
+          uv python install ${{ matrix.python-version }}
+          uv sync --all-extras --dev
 
       - name: Run Ruff Linter
         run: uv run ruff check app/ tests/ scripts/ migrations/
