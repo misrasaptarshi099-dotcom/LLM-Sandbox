@@ -1,0 +1,71 @@
+[project]
+name = "llm-sandbox"
+version = "0.1.0"
+description = "LLM Sandbox — Prompt Injection Challenge Backend"
+requires-python = ">=3.12"
+dependencies = [
+    # --- API ---
+    "fastapi>=0.115,<1",           # async API framework
+    "uvicorn[standard]>=0.30,<1",  # ASGI server
+    "pydantic>=2,<3",              # request/response validation
+    "pydantic-settings>=2,<3",     # env-based configuration
+
+    # --- Database ---
+    "sqlalchemy[asyncio]>=2,<3",   # async ORM / core
+    "asyncpg>=0.29,<1",            # PostgreSQL async driver
+    "alembic>=1.13,<2",            # schema migrations
+
+    # --- Queue / Cache ---
+    "redis>=5,<6",                 # async Redis client for queue + rate limiting
+
+    # --- HTTP client ---
+    "httpx>=0.27,<1",              # async HTTP for LLM provider calls
+
+    # --- Security ---
+    "cryptography>=43,<45",        # AES-256-GCM system prompt encryption
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+    "pytest-asyncio>=0.24,<1",
+    "httpx",                       # TestClient transport
+    "ruff>=0.6,<1",                # linting + formatting
+    "fakeredis>=2.23,<3",          # in-memory Redis for tests
+    "aiosqlite>=0.20,<1",          # in-memory async SQLite for test suites
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:pytest_asyncio",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "S",    # flake8-bandit (security)
+    "SIM",  # flake8-simplify
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]  # assert and dummy secrets in tests
+"app/core/config.py" = ["S105"]        # placeholder defaults, overridden by env
+
+[tool.hatch.build.targets.wheel]
+packages = ["app", "migrations"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
