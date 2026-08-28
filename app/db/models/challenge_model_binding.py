@@ -34,10 +34,10 @@ class ChallengeModelBinding(Base):
             "model_id",
             name="uq_challenge_model_bindings_version_model",
         ),
-        CheckConstraint("max_input_tokens > 0", name="ck_cmb_max_input_tokens"),
-        CheckConstraint("max_output_tokens > 0", name="ck_cmb_max_output_tokens"),
-        CheckConstraint("temperature >= 0", name="ck_cmb_temperature"),
-        CheckConstraint("timeout_ms > 0", name="ck_cmb_timeout_ms"),
+        CheckConstraint("max_input_tokens > 0", name="max_input_tokens"),
+        CheckConstraint("max_output_tokens > 0", name="max_output_tokens"),
+        CheckConstraint("temperature >= 0", name="temperature"),
+        CheckConstraint("timeout_ms > 0", name="timeout_ms"),
     )
 
     id: Mapped[int] = mapped_column(

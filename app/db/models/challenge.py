@@ -22,7 +22,7 @@ class Challenge(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ('DRAFT', 'LIVE', 'DISABLED', 'ARCHIVED')",
-            name="ck_challenges_status",
+            name="status",
         ),
     )
 

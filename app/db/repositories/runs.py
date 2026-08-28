@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,25 @@ from app.db.models.model import Model
 from app.db.models.provider import Provider
 from app.db.models.run import Run
 from app.db.models.run_result import RunResult
+
+TerminalRunStatus = Literal[
+    "COMPLETED",
+    "PROVIDER_ERROR",
+    "TIMEOUT",
+    "RATE_LIMITED",
+    "VALIDATION_ERROR",
+    "ADMISSION_REJECTED",
+    "SYSTEM_ERROR",
+]
+VALID_TERMINAL_STATUSES: frozenset[str] = frozenset({
+    "COMPLETED",
+    "PROVIDER_ERROR",
+    "TIMEOUT",
+    "RATE_LIMITED",
+    "VALIDATION_ERROR",
+    "ADMISSION_REJECTED",
+    "SYSTEM_ERROR",
+})
 
 
 @dataclass(frozen=True)
@@ -158,7 +178,7 @@ class RunRepository:
     async def finalize_run(
         self,
         run_id: uuid.UUID,
-        status: str,
+        status: TerminalRunStatus,
         response_preview: str | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
@@ -168,6 +188,9 @@ class RunRepository:
         response_object_key: str | None = None,
     ) -> bool:
         """Conditionally transition RUNNING -> terminal status and persist RunResult."""
+        if status not in VALID_TERMINAL_STATUSES:
+            raise ValueError(f"Invalid terminal run status: {status}")
+
         now = datetime.now(UTC)
         stmt = (
             update(Run)

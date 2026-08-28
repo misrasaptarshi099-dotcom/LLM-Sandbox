@@ -2,8 +2,8 @@
 
 Rule §10, Architecture §15:
 - /health/live: Shallow liveness — does not call the LLM or spend money.
-- /health/ready: Verifies dependency connectivity (DB, Redis)
-  without generating model traffic.
+- /health/ready: Readiness probe (shallow process readiness in initial phase;
+  deep DB/Redis connectivity check integrated as services activate).
 """
 
 from __future__ import annotations
@@ -21,9 +21,5 @@ async def liveness() -> dict[str, str]:
 
 @router.get("/health/ready")
 async def readiness() -> dict[str, str]:
-    """Readiness probe — verifies the process can serve traffic.
-
-    In Phase 1 this is a shallow check. Phase 2 will add DB/Redis
-    connectivity verification.
-    """
+    """Readiness probe — verifies the process can serve traffic."""
     return {"status": "ok"}

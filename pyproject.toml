@@ -60,11 +60,11 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105"]   # assert and dummy secrets in tests
-"app/core/config.py" = ["S105"] # placeholder defaults, overridden by env
+"tests/**" = ["S101", "S105", "S106"]  # assert and dummy secrets in tests
+"app/core/config.py" = ["S105"]        # placeholder defaults, overridden by env
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = ["app", "migrations"]
 
 [build-system]
 requires = ["hatchling"]

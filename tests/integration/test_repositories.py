@@ -251,3 +251,66 @@ async def test_run_repository_keyset_pagination(
     page1_ids = {r.id for r in page1}
     page2_ids = {r.id for r in page2}
     assert page1_ids.isdisjoint(page2_ids)
+
+
+@pytest.mark.asyncio
+async def test_challenge_repository_ignores_unpublished_version(
+    db_session: AsyncSession, seeded_data: dict
+) -> None:
+    challenge = seeded_data["challenge"]
+    model = seeded_data["model"]
+    repo = ChallengeRepository(db_session)
+
+    # Add unpublished version 2 (published_at=None)
+    v2_ciphertext = encrypt_system_prompt("Unpublished draft system prompt")
+    v2 = ChallengeVersion(
+        challenge_id=challenge.id,
+        version_no=2,
+        system_prompt_ciphertext=v2_ciphertext,
+        system_prompt_hash=hash_text("Unpublished draft system prompt"),
+        published_at=None,
+    )
+    db_session.add(v2)
+    await db_session.flush()
+
+    binding_v2 = ChallengeModelBinding(
+        challenge_version_id=v2.id,
+        model_id=model.id,
+        max_input_tokens=4096,
+        max_output_tokens=1024,
+        temperature=Decimal("0.500"),
+        timeout_ms=5000,
+        active=True,
+    )
+    db_session.add(binding_v2)
+    await db_session.commit()
+
+    # Must resolve version 1 because version 2 is unpublished
+    ctx = await repo.get_latest_live_binding("prompt-injection-test")
+    assert ctx is not None
+    assert ctx.version.version_no == 1
+    assert ctx.binding.max_input_tokens == 1024
+
+
+@pytest.mark.asyncio
+async def test_run_repository_rejects_invalid_terminal_status(
+    db_session: AsyncSession, seeded_data: dict
+) -> None:
+    user = seeded_data["user"]
+    binding = seeded_data["binding"]
+    repo = RunRepository(db_session)
+
+    run = await repo.create_run(
+        user_id=user.id,
+        model_binding_id=binding.id,
+        prompt_hash=hash_text("test prompt"),
+        prompt_bytes=11,
+    )
+    await repo.claim_run(run.id)
+
+    with pytest.raises(ValueError, match="Invalid terminal run status"):
+        await repo.finalize_run(
+            run_id=run.id,
+            status="INVALID_STATUS",  # type: ignore
+            response_preview="Error",
+        )

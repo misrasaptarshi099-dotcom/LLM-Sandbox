@@ -31,11 +31,12 @@ class Run(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ('QUEUED', 'RUNNING', 'COMPLETED', "
-            "'PROVIDER_ERROR', 'TIMEOUT', 'ADMISSION_REJECTED', 'SYSTEM_ERROR')",
-            name="ck_runs_status",
+            "'PROVIDER_ERROR', 'TIMEOUT', 'RATE_LIMITED', "
+            "'VALIDATION_ERROR', 'ADMISSION_REJECTED', 'SYSTEM_ERROR')",
+            name="status",
         ),
-        CheckConstraint("prompt_bytes >= 0", name="ck_runs_prompt_bytes"),
-        CheckConstraint("attempt_count >= 0", name="ck_runs_attempt_count"),
+        CheckConstraint("prompt_bytes >= 0", name="prompt_bytes"),
+        CheckConstraint("attempt_count >= 0", name="attempt_count"),
         # Keyset pagination index: filtering by user_id and ordering by (created_at DESC, id DESC)
         Index("idx_runs_user_created_id", "user_id", "created_at", "id"),
         # Hot queue index: worker polling and monitoring

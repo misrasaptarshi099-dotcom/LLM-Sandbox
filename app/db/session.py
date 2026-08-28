@@ -42,7 +42,7 @@ def create_engine_from_url(url: str | None = None) -> AsyncEngine:
         engine_kwargs.update({
             "pool_size": 10,
             "max_overflow": 5,
-            "pool_timeout": 5.0,
+            "pool_timeout": 2.0,
             "pool_pre_ping": True,
         })
 

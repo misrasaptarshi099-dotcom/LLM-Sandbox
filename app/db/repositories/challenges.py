@@ -60,6 +60,7 @@ class ChallengeRepository:
             .where(
                 Challenge.slug == challenge_slug,
                 Challenge.status == "LIVE",
+                ChallengeVersion.published_at.is_not(None),
                 ChallengeModelBinding.active.is_(True),
                 Model.active.is_(True),
                 Provider.active.is_(True),
@@ -89,6 +90,7 @@ class ChallengeRepository:
         """List active public challenge metadata (safe for participants).
 
         Never includes system prompt ciphertext or decrypted secret prompt (Rule §2).
+        Only includes published challenge versions.
         """
         stmt = (
             select(Challenge)
@@ -105,7 +107,8 @@ class ChallengeRepository:
 
         public_list: list[dict[str, Any]] = []
         for ch in challenges:
-            latest_version = ch.versions[0] if ch.versions else None
+            published_versions = [v for v in ch.versions if v.published_at is not None]
+            latest_version = published_versions[0] if published_versions else None
             allowed_models = []
             if latest_version:
                 for b in latest_version.bindings:

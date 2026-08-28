@@ -134,10 +134,14 @@ Responsibilities:
 
 Target admission operation:
 ```text
-1 short DB transaction
-1 queue enqueue
+1 short DB transaction (run row + transactional outbox)
+1 queue enqueue / outbox publisher
 1 HTTP response
 ```
+
+Outbox & Reconciler:
+- Run record is committed atomically with the queued state.
+- In-memory/background outbox publisher or queue reconciler guarantees that committed `QUEUED` runs with missing queue jobs are recovered without duplication.
 
 ## 5. Worker
 

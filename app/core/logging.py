@@ -29,34 +29,56 @@ _REDACTED_KEYS = frozenset({
 })
 
 
-def _redact(data: dict[str, Any]) -> dict[str, Any]:
-    """Recursively redact sensitive keys in a dict."""
+def _redact_value(val: Any) -> Any:
+    """Recursively redact nested data structures while preserving safe scalars."""
+    if isinstance(val, dict):
+        return _redact_dict(val)
+    if isinstance(val, (list, tuple, set)):
+        return [_redact_value(item) for item in val]
+    return val
+
+
+def _redact_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """Recursively redact sensitive keys in a dictionary."""
     cleaned: dict[str, Any] = {}
     for key, value in data.items():
-        if key.lower() in _REDACTED_KEYS:
+        if isinstance(key, str) and key.lower() in _REDACTED_KEYS:
             cleaned[key] = "**REDACTED**"
-        elif isinstance(value, dict):
-            cleaned[key] = _redact(value)
         else:
-            cleaned[key] = value
+            cleaned[key] = _redact_value(value)
     return cleaned
+
+
+def _redact_string(text: str) -> str:
+    """Redact bearer token / secret string patterns if present in message strings."""
+    # Never leak Bearer tokens in log messages
+    if "Bearer " in text:
+        parts = text.split("Bearer ")
+        return parts[0] + "Bearer **REDACTED**"
+    return text
+
+
+def _redact(data: Any) -> Any:
+    """Entrypoint for recursive redaction."""
+    return _redact_value(data)
 
 
 class StructuredJsonFormatter(logging.Formatter):
     """Emit one JSON object per log line with automatic redaction."""
 
     def format(self, record: logging.LogRecord) -> str:
+        safe_message = _redact_string(record.getMessage())
         log_entry: dict[str, Any] = {
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": safe_message,
         }
-        # Merge any extra structured fields attached to the record.
+        # Merge any extra structured fields attached to the record after redaction.
         if hasattr(record, "extra_fields"):
             log_entry.update(_redact(record.extra_fields))
         if record.exc_info and record.exc_info[1]:
-            log_entry["exception"] = str(record.exc_info[1])
+            log_entry["exception"] = _redact_string(str(record.exc_info[1]))
         return json.dumps(log_entry, default=str)
 
 

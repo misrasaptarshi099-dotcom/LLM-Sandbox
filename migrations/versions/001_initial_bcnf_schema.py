@@ -34,20 +34,19 @@ def upgrade() -> None:
     # 2. providers table
     op.create_table(
         "providers",
-        sa.Column("id", sa.SmallInteger(), autoincrement=True, nullable=False),
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("code", sa.String(length=32), nullable=False),
         sa.Column("kind", sa.String(length=32), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_providers")),
-        sa.UniqueConstraint("code", name=op.f("uq_providers_code")),
     )
     op.create_index(op.f("ix_providers_code"), "providers", ["code"], unique=True)
 
     # 3. models table
     op.create_table(
         "models",
-        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
-        sa.Column("provider_id", sa.SmallInteger(), nullable=False),
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("provider_id", sa.Integer(), nullable=False),
         sa.Column("model_name", sa.String(length=128), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -67,7 +66,7 @@ def upgrade() -> None:
     # 4. challenges table
     op.create_table(
         "challenges",
-        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("slug", sa.String(length=80), nullable=False),
         sa.Column("title", sa.String(length=200), nullable=False),
         sa.Column("status", sa.String(length=20), nullable=False, server_default="LIVE"),
@@ -84,8 +83,8 @@ def upgrade() -> None:
     # 5. challenge_versions table
     op.create_table(
         "challenge_versions",
-        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
-        sa.Column("challenge_id", sa.BigInteger(), nullable=False),
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("challenge_id", sa.Integer(), nullable=False),
         sa.Column("version_no", sa.Integer(), nullable=False),
         sa.Column("system_prompt_ciphertext", sa.Text(), nullable=False),
         sa.Column("system_prompt_hash", sa.String(length=64), nullable=False),
@@ -114,9 +113,9 @@ def upgrade() -> None:
     # 6. challenge_model_bindings table
     op.create_table(
         "challenge_model_bindings",
-        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
-        sa.Column("challenge_version_id", sa.BigInteger(), nullable=False),
-        sa.Column("model_id", sa.BigInteger(), nullable=False),
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("challenge_version_id", sa.Integer(), nullable=False),
+        sa.Column("model_id", sa.Integer(), nullable=False),
         sa.Column("max_input_tokens", sa.Integer(), nullable=False, server_default="2048"),
         sa.Column("max_output_tokens", sa.Integer(), nullable=False, server_default="512"),
         sa.Column(
@@ -156,7 +155,7 @@ def upgrade() -> None:
         "runs",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("user_id", sa.Uuid(), nullable=False),
-        sa.Column("model_binding_id", sa.BigInteger(), nullable=False),
+        sa.Column("model_binding_id", sa.Integer(), nullable=False),
         sa.Column("status", sa.String(length=24), nullable=False, server_default="QUEUED"),
         sa.Column("prompt_hash", sa.String(length=64), nullable=False),
         sa.Column("prompt_bytes", sa.Integer(), nullable=False),
@@ -166,7 +165,8 @@ def upgrade() -> None:
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint(
             "status IN ('QUEUED', 'RUNNING', 'COMPLETED', "
-            "'PROVIDER_ERROR', 'TIMEOUT', 'ADMISSION_REJECTED', 'SYSTEM_ERROR')",
+            "'PROVIDER_ERROR', 'TIMEOUT', 'RATE_LIMITED', "
+            "'VALIDATION_ERROR', 'ADMISSION_REJECTED', 'SYSTEM_ERROR')",
             name="ck_runs_status",
         ),
         sa.CheckConstraint("prompt_bytes >= 0", name="ck_runs_prompt_bytes"),

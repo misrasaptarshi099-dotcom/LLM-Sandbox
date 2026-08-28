@@ -262,9 +262,8 @@ CREATE TABLE challenge_model_bindings (
 CREATE TABLE runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id),
-    challenge_version_id BIGINT NOT NULL
-        REFERENCES challenge_versions(id),
-    model_id BIGINT NOT NULL REFERENCES models(id),
+    model_binding_id BIGINT NOT NULL
+        REFERENCES challenge_model_bindings(id),
     status VARCHAR(24) NOT NULL,
     prompt_hash CHAR(64) NOT NULL,
     prompt_bytes INTEGER NOT NULL,
@@ -278,6 +277,9 @@ CREATE TABLE runs (
         'COMPLETED',
         'PROVIDER_ERROR',
         'TIMEOUT',
+        'RATE_LIMITED',
+        'VALIDATION_ERROR',
+        'ADMISSION_REJECTED',
         'SYSTEM_ERROR'
     )),
     CHECK (prompt_bytes >= 0),
@@ -300,18 +302,14 @@ CREATE TABLE run_results (
 
 ## 6. Integrity Rule for `runs`
 
-Application code must ensure the selected model is allowed by the challenge version.
-
-For stronger database-level integrity, use a surrogate binding ID:
+Application code ensures the selected model is allowed by the challenge version via the surrogate binding ID:
 
 ```text
 challenge_model_bindings.id PK
-runs.challenge_model_binding_id FK
+runs.model_binding_id FK
 ```
 
-This makes the allowed-model relationship explicit and removes the possibility of a run referencing a challenge version/model pair that is not bound.
-
-For the production design, this surrogate-binding variant is preferred because it turns the domain rule into a direct foreign key rather than an application-only invariant.
+This turns the allowed-model relationship into a direct foreign key constraint.
 
 ## 7. Recommended Production Variant
 
@@ -346,7 +344,7 @@ This keeps the database normalized and strengthens referential integrity.
 Only create indexes justified by real query patterns.
 
 ```sql
-CREATE INDEX idx_runs_user_created
+CREATE INDEX idx_runs_user_created_id
     ON runs (user_id, created_at DESC, id DESC);
 
 CREATE INDEX idx_runs_status_created
@@ -420,6 +418,7 @@ SELECT
     r.user_id,
     r.prompt_hash,
     r.prompt_bytes,
+    r.attempt_count,
     cv.system_prompt_ciphertext,
     cmb.max_input_tokens,
     cmb.max_output_tokens,
@@ -428,11 +427,10 @@ SELECT
     m.model_name,
     p.code AS provider_code
 FROM runs r
-JOIN challenge_versions cv
-    ON cv.id = r.challenge_version_id
 JOIN challenge_model_bindings cmb
-    ON cmb.challenge_version_id = cv.id
-   AND cmb.model_id = r.model_id
+    ON cmb.id = r.model_binding_id
+JOIN challenge_versions cv
+    ON cv.id = cmb.challenge_version_id
 JOIN models m
     ON m.id = cmb.model_id
 JOIN providers p
