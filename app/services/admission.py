@@ -84,7 +84,7 @@ class AdmissionService:
                 detail=msg,
             )
 
-        # 4. Create Run row in database (short transaction)
+        # 4. Create Run row in database
         prompt_hash = hash_text(request.prompt)
         run = await self.run_repo.create_run(
             user_id=user_id,
@@ -92,18 +92,25 @@ class AdmissionService:
             prompt_hash=prompt_hash,
             prompt_bytes=prompt_bytes,
         )
-        # Flush/commit run before enqueueing
-        await self.session.commit()
 
-        # 5. Enqueue run ID into asynchronous queue
-        await self.queue.enqueue(
-            run_id=run.id,
-            metadata={
-                "challenge_slug": ctx.challenge.slug,
-                "model_name": ctx.model.model_name,
-                "prompt": request.prompt,  # transient payload for worker
-            },
-        )
+        # 5. Enqueue run job with transactional rollback safety
+        try:
+            await self.queue.enqueue(
+                run_id=run.id,
+                metadata={
+                    "challenge_slug": ctx.challenge.slug,
+                    "model_name": ctx.model.model_name,
+                    "prompt": request.prompt,  # transient payload for worker
+                },
+            )
+            # Commit only after queue has acknowledged receipt
+            await self.session.commit()
+        except Exception as exc:
+            await self.session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Job queue is currently unavailable. Please retry your submission.",
+            ) from exc
 
         return RunCreateResponse(
             run_id=run.id,

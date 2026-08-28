@@ -124,10 +124,22 @@ def upgrade() -> None:
         ),
         sa.Column("timeout_ms", sa.Integer(), nullable=False, server_default="15000"),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.CheckConstraint("max_input_tokens > 0", name="ck_cmb_max_input_tokens"),
-        sa.CheckConstraint("max_output_tokens > 0", name="ck_cmb_max_output_tokens"),
-        sa.CheckConstraint("temperature >= 0", name="ck_cmb_temperature"),
-        sa.CheckConstraint("timeout_ms > 0", name="ck_cmb_timeout_ms"),
+        sa.CheckConstraint(
+            "max_input_tokens > 0",
+            name=op.f("ck_challenge_model_bindings_max_input_tokens"),
+        ),
+        sa.CheckConstraint(
+            "max_output_tokens > 0",
+            name=op.f("ck_challenge_model_bindings_max_output_tokens"),
+        ),
+        sa.CheckConstraint(
+            "temperature >= 0",
+            name=op.f("ck_challenge_model_bindings_temperature"),
+        ),
+        sa.CheckConstraint(
+            "timeout_ms > 0",
+            name=op.f("ck_challenge_model_bindings_timeout_ms"),
+        ),
         sa.ForeignKeyConstraint(
             ["challenge_version_id"],
             ["challenge_versions.id"],

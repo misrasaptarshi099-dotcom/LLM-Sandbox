@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
+import redis.asyncio as aioredis
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +46,12 @@ def get_rate_limiter() -> RateLimiter:
     """Return the global rate limiter instance."""
     global _rate_limiter_singleton
     if _rate_limiter_singleton is None:
-        _rate_limiter_singleton = RateLimiter()
+        settings = get_settings()
+        try:
+            client = aioredis.from_url(settings.redis_url, decode_responses=True)
+            _rate_limiter_singleton = RateLimiter(redis_client=client)
+        except Exception:
+            _rate_limiter_singleton = RateLimiter()
     return _rate_limiter_singleton
 
 
@@ -63,12 +69,12 @@ async def get_current_user(
     """Authenticate and resolve the current user.
 
     Supports:
-    1. Authorization: Bearer <dev_auth_token>
-    2. X-Participant-Id: <external_ref>
+    1. Authorization: Bearer <dev_auth_token> (Required in production)
+    2. X-Participant-Id: <external_ref> (Allowed in dev/test only)
     """
     settings = get_settings()
+    is_dev_env = settings.app_env in ("development", "dev", "test", "testing")
 
-    # Determine external_ref
     external_ref: str
     if authorization:
         if not verify_auth_token(authorization):
@@ -76,11 +82,11 @@ async def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired authentication token.",
             )
+        external_ref = (
+            x_participant_id if (x_participant_id and is_dev_env) else "authenticated-participant"
+        )
+    elif is_dev_env:
         external_ref = x_participant_id or "dev-participant-01"
-    elif x_participant_id:
-        external_ref = x_participant_id
-    elif settings.app_env in ("development", "dev", "test", "testing"):
-        external_ref = "dev-participant-01"
     else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

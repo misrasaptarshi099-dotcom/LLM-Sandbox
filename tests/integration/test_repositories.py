@@ -314,3 +314,46 @@ async def test_run_repository_rejects_invalid_terminal_status(
             status="INVALID_STATUS",  # type: ignore
             response_preview="Error",
         )
+
+
+@pytest.mark.asyncio
+async def test_challenge_repository_omits_draft_only_challenge(
+    db_session: AsyncSession, seeded_data: dict
+) -> None:
+    model = seeded_data["model"]
+    repo = ChallengeRepository(db_session)
+
+    # Add LIVE challenge with ONLY an unpublished version
+    draft_ch = Challenge(
+        slug="draft-only-challenge",
+        title="Draft Only Challenge",
+        status="LIVE",
+    )
+    db_session.add(draft_ch)
+    await db_session.flush()
+
+    v_draft = ChallengeVersion(
+        challenge_id=draft_ch.id,
+        version_no=1,
+        system_prompt_ciphertext=encrypt_system_prompt("draft secret"),
+        system_prompt_hash=hash_text("draft secret"),
+        published_at=None,
+    )
+    db_session.add(v_draft)
+    await db_session.flush()
+
+    binding = ChallengeModelBinding(
+        challenge_version_id=v_draft.id,
+        model_id=model.id,
+        max_input_tokens=1024,
+        max_output_tokens=256,
+        temperature=Decimal("0.700"),
+        timeout_ms=5000,
+        active=True,
+    )
+    db_session.add(binding)
+    await db_session.commit()
+
+    public_challenges = await repo.list_public_challenges()
+    slugs = [c["slug"] for c in public_challenges]
+    assert "draft-only-challenge" not in slugs

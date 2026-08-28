@@ -17,6 +17,40 @@ import redis.asyncio as aioredis
 from app.core.config import get_settings
 from app.core.logging import get_logger
 
+_LUA_RATE_LIMIT_SCRIPT = """
+local user_key = KEYS[1]
+local global_key = KEYS[2]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local user_limit = tonumber(ARGV[3])
+local global_limit = tonumber(ARGV[4])
+local member = ARGV[5]
+
+local clear_before = now - window
+
+-- Prune user
+redis.call('ZREMRANGEBYSCORE', user_key, '-inf', clear_before)
+local user_count = redis.call('ZCARD', user_key)
+if user_count >= user_limit then
+    return {0, 'USER_LIMIT'}
+end
+
+-- Prune global
+redis.call('ZREMRANGEBYSCORE', global_key, '-inf', clear_before)
+local global_count = redis.call('ZCARD', global_key)
+if global_count >= global_limit then
+    return {0, 'GLOBAL_LIMIT'}
+end
+
+-- Both allowed: record attempt and set TTL
+redis.call('ZADD', user_key, now, member)
+redis.call('EXPIRE', user_key, math.ceil(window) + 5)
+redis.call('ZADD', global_key, now, member)
+redis.call('EXPIRE', global_key, math.ceil(window) + 5)
+
+return {1, 'OK'}
+"""
+
 
 class RateLimiter:
     """Sliding-window counter rate limiter."""
@@ -24,6 +58,7 @@ class RateLimiter:
     def __init__(self, redis_client: aioredis.Redis | None = None) -> None:
         self.redis = redis_client
         self._memory_buckets: dict[str, list[float]] = defaultdict(list)
+        self._lua_script = None
 
     async def check_rate_limit(self, user_id: uuid.UUID) -> tuple[bool, str | None]:
         """Check if user or global rate limit is exceeded.
@@ -35,33 +70,30 @@ class RateLimiter:
         global_limit = settings.rate_limit_global_per_minute
         now = time.time()
         window = 60.0
+        member = f"{now}:{uuid.uuid4().hex}"
 
         if self.redis is not None:
             try:
                 user_key = f"ratelimit:user:{user_id}"
                 global_key = "ratelimit:global"
 
-                # Check user limit
-                pipe = self.redis.pipeline()
-                pipe.zremrangebyscore(user_key, 0, now - window)
-                pipe.zcard(user_key)
-                pipe.zremrangebyscore(global_key, 0, now - window)
-                pipe.zcard(global_key)
-                _, user_count, _, global_count = await pipe.execute()
-
-                if user_count >= user_limit:
+                res = await self.redis.eval(
+                    _LUA_RATE_LIMIT_SCRIPT,
+                    2,
+                    user_key,
+                    global_key,
+                    str(now),
+                    str(window),
+                    str(user_limit),
+                    str(global_limit),
+                    member,
+                )
+                allowed, reason = res[0], res[1]
+                if allowed == 1:
+                    return True, None
+                if reason == "USER_LIMIT":
                     return False, "User rate limit exceeded (30 req/min). Please try again shortly."
-                if global_count >= global_limit:
-                    return False, "Global system capacity reached. Please try again shortly."
-
-                # Record attempt
-                pipe2 = self.redis.pipeline()
-                pipe2.zadd(user_key, {str(now): now})
-                pipe2.expire(user_key, int(window) + 5)
-                pipe2.zadd(global_key, {str(now): now})
-                pipe2.expire(global_key, int(window) + 5)
-                await pipe2.execute()
-                return True, None
+                return False, "Global system capacity reached. Please try again shortly."
             except Exception as exc:
                 # Log redis exception and fallback to in-memory sliding window
                 logger = get_logger("rate_limiter")

@@ -17,7 +17,7 @@ from typing import Literal
 
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.db.models.challenge_model_binding import ChallengeModelBinding
 from app.db.models.challenge_version import ChallengeVersion
@@ -97,7 +97,7 @@ class RunRepository:
         user_id: uuid.UUID | None = None,
     ) -> Run | None:
         """Hot status query: 1 primary-key lookup + 1-to-1 join (Database Structure §10)."""
-        stmt = select(Run).where(Run.id == run_id).options(selectinload(Run.result))
+        stmt = select(Run).where(Run.id == run_id).options(joinedload(Run.result))
         if user_id is not None:
             stmt = stmt.where(Run.user_id == user_id)
 

@@ -1,11 +1,12 @@
-"""Integration tests for Run submission and status polling endpoints."""
-
 from __future__ import annotations
 
 import uuid
 
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_queue
+from app.main import app
 from app.queue.memory_queue import MemoryQueue
 
 
@@ -128,3 +129,39 @@ async def test_get_user_runs_history(client: AsyncClient, seeded_test_env: dict)
     assert len(data["runs"]) == 2
     assert "next_cursor" in data
     assert data["next_cursor"] is not None
+
+    # Test next page using opaque cursor
+    next_res = await client.get(f"/v1/runs?cursor={data['next_cursor']}&limit=2")
+    assert next_res.status_code == 200
+    next_data = next_res.json()
+    assert len(next_data["runs"]) == 1
+
+
+async def test_submit_run_queue_failure_rolls_back_db(
+    client: AsyncClient,
+    seeded_test_env: dict,
+    test_db_session: AsyncSession,
+) -> None:
+    class FailingQueue(MemoryQueue):
+        async def enqueue(self, *args, **kwargs) -> None:
+            raise ConnectionError("Redis cluster unreachable")
+
+    app.dependency_overrides[get_queue] = lambda: FailingQueue()
+
+    response = await client.post(
+        "/v1/runs",
+        json={
+            "challenge_slug": "prompt-injection-01",
+            "prompt": "Test prompt during outage",
+        },
+    )
+    assert response.status_code == 503
+    assert "Job queue is currently unavailable" in response.json()["error"]["message"]
+
+    # Verify no runs row was committed in DB
+    from sqlalchemy import select
+
+    from app.db.models.run import Run
+
+    runs = (await test_db_session.execute(select(Run))).scalars().all()
+    assert len(runs) == 0

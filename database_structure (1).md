@@ -243,6 +243,7 @@ CREATE TABLE challenge_versions (
 );
 
 CREATE TABLE challenge_model_bindings (
+    id BIGSERIAL PRIMARY KEY,
     challenge_version_id BIGINT NOT NULL
         REFERENCES challenge_versions(id) ON DELETE CASCADE,
     model_id BIGINT NOT NULL
@@ -252,7 +253,7 @@ CREATE TABLE challenge_model_bindings (
     temperature NUMERIC(4,3) NOT NULL,
     timeout_ms INTEGER NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,
-    PRIMARY KEY (challenge_version_id, model_id),
+    UNIQUE (challenge_version_id, model_id),
     CHECK (max_input_tokens > 0),
     CHECK (max_output_tokens > 0),
     CHECK (temperature >= 0),

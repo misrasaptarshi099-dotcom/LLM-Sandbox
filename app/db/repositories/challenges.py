@@ -99,6 +99,7 @@ class ChallengeRepository:
                 selectinload(Challenge.versions)
                 .selectinload(ChallengeVersion.bindings)
                 .selectinload(ChallengeModelBinding.model)
+                .selectinload(Model.provider)
             )
             .order_by(Challenge.created_at.desc())
         )
@@ -108,26 +109,31 @@ class ChallengeRepository:
         public_list: list[dict[str, Any]] = []
         for ch in challenges:
             published_versions = [v for v in ch.versions if v.published_at is not None]
-            latest_version = published_versions[0] if published_versions else None
+            if not published_versions:
+                continue
+
+            latest_version = sorted(published_versions, key=lambda v: v.version_no, reverse=True)[0]
             allowed_models = []
-            if latest_version:
-                for b in latest_version.bindings:
-                    if b.active and b.model.active:
-                        allowed_models.append(
-                            {
-                                "model_name": b.model.model_name,
-                                "max_input_tokens": b.max_input_tokens,
-                                "max_output_tokens": b.max_output_tokens,
-                                "temperature": float(b.temperature),
-                            }
-                        )
+            for b in latest_version.bindings:
+                if b.active and b.model.active and b.model.provider.active:
+                    allowed_models.append(
+                        {
+                            "model_name": b.model.model_name,
+                            "max_input_tokens": b.max_input_tokens,
+                            "max_output_tokens": b.max_output_tokens,
+                            "temperature": float(b.temperature),
+                        }
+                    )
+
+            if not allowed_models:
+                continue
 
             public_list.append(
                 {
                     "slug": ch.slug,
                     "title": ch.title,
                     "status": ch.status,
-                    "latest_version": latest_version.version_no if latest_version else 1,
+                    "latest_version": latest_version.version_no,
                     "allowed_models": allowed_models,
                 }
             )

@@ -47,3 +47,14 @@ def test_structured_formatter_redacts_messages() -> None:
 
     assert "secret-auth-token-xyz" not in formatted
     assert parsed["message"] == "Handling request with Bearer **REDACTED**"
+
+
+def test_redact_custom_object_representation() -> None:
+    class CustomContext:
+        def __str__(self) -> str:
+            return "CustomContext(headers={'Authorization': 'Bearer super-secret-jwt'})"
+
+    payload = {"custom_ctx": CustomContext()}
+    redacted = _redact(payload)
+    assert "super-secret-jwt" not in str(redacted["custom_ctx"])
+    assert "Bearer **REDACTED**" in str(redacted["custom_ctx"])

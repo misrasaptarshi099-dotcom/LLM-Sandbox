@@ -31,13 +31,26 @@ _REDACTED_KEYS = frozenset(
 )
 
 
+def _redact_string(text: str) -> str:
+    """Redact bearer token / secret string patterns if present in strings."""
+    if "Bearer " in text:
+        parts = text.split("Bearer ")
+        return parts[0] + "Bearer **REDACTED**"
+    return text
+
+
 def _redact_value(val: Any) -> Any:
-    """Recursively redact nested data structures while preserving safe scalars."""
+    """Recursively redact nested data structures and string/object representations."""
     if isinstance(val, dict):
         return _redact_dict(val)
     if isinstance(val, (list, tuple, set)):
         return [_redact_value(item) for item in val]
-    return val
+    if isinstance(val, (int, float, bool, type(None))):
+        return val
+    if isinstance(val, str):
+        return _redact_string(val)
+    # For custom non-scalar objects, convert to string representation and redact
+    return _redact_string(str(val))
 
 
 def _redact_dict(data: dict[str, Any]) -> dict[str, Any]:
@@ -49,15 +62,6 @@ def _redact_dict(data: dict[str, Any]) -> dict[str, Any]:
         else:
             cleaned[key] = _redact_value(value)
     return cleaned
-
-
-def _redact_string(text: str) -> str:
-    """Redact bearer token / secret string patterns if present in message strings."""
-    # Never leak Bearer tokens in log messages
-    if "Bearer " in text:
-        parts = text.split("Bearer ")
-        return parts[0] + "Bearer **REDACTED**"
-    return text
 
 
 def _redact(data: Any) -> Any:

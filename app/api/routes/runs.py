@@ -102,16 +102,40 @@ async def get_run_status(
 async def get_user_runs(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    cursor: Annotated[
+        str | None, Query(description="Opaque cursor token from previous page")
+    ] = None,
     cursor_created_at: Annotated[datetime | None, Query()] = None,
     cursor_id: Annotated[uuid.UUID | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> UserHistoryResponse:
     """Keyset pagination for user runs history avoiding deep offset scans."""
+    parsed_created_at = cursor_created_at
+    parsed_id = cursor_id
+
+    if cursor:
+        try:
+            parts = cursor.split(",", 1)
+            if len(parts) != 2:
+                raise ValueError("Invalid cursor format")
+            parsed_created_at = datetime.fromisoformat(parts[0])
+            parsed_id = uuid.UUID(parts[1])
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Invalid pagination cursor: {exc}",
+            ) from exc
+    elif (cursor_created_at is None) ^ (cursor_id is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Both cursor_created_at and cursor_id must be provided together.",
+        )
+
     repo = RunRepository(session)
     runs = await repo.get_user_history(
         user_id=current_user.id,
-        cursor_created_at=cursor_created_at,
-        cursor_id=cursor_id,
+        cursor_created_at=parsed_created_at,
+        cursor_id=parsed_id,
         limit=limit,
     )
 
