@@ -38,6 +38,7 @@ async def seed(
         # 1. Seed Providers
         providers_data = [
             {"code": "fake", "kind": "FAKE"},
+            {"code": "gemini", "kind": "GEMINI"},
             {"code": "openai", "kind": "OPENAI_COMPATIBLE"},
             {"code": "ollama", "kind": "SELF_HOSTED"},
         ]
@@ -56,6 +57,7 @@ async def seed(
         # 2. Seed Models
         models_data = [
             {"provider_code": "fake", "model_name": "mock-llm"},
+            {"provider_code": "gemini", "model_name": "gemini-2.0-flash"},
             {"provider_code": "openai", "model_name": "gpt-4o-mini"},
             {"provider_code": "ollama", "model_name": "llama3.2:1b"},
         ]
@@ -127,7 +129,7 @@ async def seed(
             await session.flush()
 
             # 5. Bind models to challenge version
-            for model_name in ["mock-llm", "gpt-4o-mini"]:
+            for model_name in ["mock-llm", "gemini-2.0-flash"]:
                 if model_name in model_map:
                     binding = ChallengeModelBinding(
                         challenge_version_id=version.id,

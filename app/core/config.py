@@ -37,10 +37,24 @@ class Settings(BaseSettings):
     # --- Auth ---
     dev_auth_token: str = _DEFAULT_AUTH_TOKEN
 
-    # --- LLM Provider (optional — FakeLLMProvider used when not set) ---
+    # --- LLM Providers ---
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
-    llm_model: str = "gpt-4o-mini"
+    gemini_api_key: str | None = None
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    ollama_base_url: str = "http://localhost:11434"
+    llm_model: str = "gemini-2.0-flash"
+    provider_timeout_seconds: float = 30.0
+    provider_allowed_hosts: list[str] = [
+        "api.openai.com",
+        "generativelanguage.googleapis.com",
+        "api.groq.com",
+        "api.together.xyz",
+        "api.deepseek.com",
+        "openrouter.ai",
+        "localhost",
+        "127.0.0.1",
+    ]
 
     # --- Rate Limiting ---
     rate_limit_per_user_per_minute: int = 30
