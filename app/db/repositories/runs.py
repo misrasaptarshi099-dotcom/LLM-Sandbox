@@ -35,15 +35,17 @@ TerminalRunStatus = Literal[
     "ADMISSION_REJECTED",
     "SYSTEM_ERROR",
 ]
-VALID_TERMINAL_STATUSES: frozenset[str] = frozenset({
-    "COMPLETED",
-    "PROVIDER_ERROR",
-    "TIMEOUT",
-    "RATE_LIMITED",
-    "VALIDATION_ERROR",
-    "ADMISSION_REJECTED",
-    "SYSTEM_ERROR",
-})
+VALID_TERMINAL_STATUSES: frozenset[str] = frozenset(
+    {
+        "COMPLETED",
+        "PROVIDER_ERROR",
+        "TIMEOUT",
+        "RATE_LIMITED",
+        "VALIDATION_ERROR",
+        "ADMISSION_REJECTED",
+        "SYSTEM_ERROR",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -95,11 +97,7 @@ class RunRepository:
         user_id: uuid.UUID | None = None,
     ) -> Run | None:
         """Hot status query: 1 primary-key lookup + 1-to-1 join (Database Structure §10)."""
-        stmt = (
-            select(Run)
-            .where(Run.id == run_id)
-            .options(selectinload(Run.result))
-        )
+        stmt = select(Run).where(Run.id == run_id).options(selectinload(Run.result))
         if user_id is not None:
             stmt = stmt.where(Run.user_id == user_id)
 

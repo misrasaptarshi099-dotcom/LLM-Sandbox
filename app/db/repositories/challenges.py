@@ -113,19 +113,23 @@ class ChallengeRepository:
             if latest_version:
                 for b in latest_version.bindings:
                     if b.active and b.model.active:
-                        allowed_models.append({
-                            "model_name": b.model.model_name,
-                            "max_input_tokens": b.max_input_tokens,
-                            "max_output_tokens": b.max_output_tokens,
-                            "temperature": float(b.temperature),
-                        })
+                        allowed_models.append(
+                            {
+                                "model_name": b.model.model_name,
+                                "max_input_tokens": b.max_input_tokens,
+                                "max_output_tokens": b.max_output_tokens,
+                                "temperature": float(b.temperature),
+                            }
+                        )
 
-            public_list.append({
-                "slug": ch.slug,
-                "title": ch.title,
-                "status": ch.status,
-                "latest_version": latest_version.version_no if latest_version else 1,
-                "allowed_models": allowed_models,
-            })
+            public_list.append(
+                {
+                    "slug": ch.slug,
+                    "title": ch.title,
+                    "status": ch.status,
+                    "latest_version": latest_version.version_no if latest_version else 1,
+                    "allowed_models": allowed_models,
+                }
+            )
 
         return public_list

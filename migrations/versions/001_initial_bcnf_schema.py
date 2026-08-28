@@ -59,9 +59,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_models")),
         sa.UniqueConstraint("provider_id", "model_name", name="uq_models_provider_model_name"),
     )
-    op.create_index(
-        "idx_models_provider_active", "models", ["provider_id", "active"], unique=False
-    )
+    op.create_index("idx_models_provider_active", "models", ["provider_id", "active"], unique=False)
 
     # 4. challenges table
     op.create_table(

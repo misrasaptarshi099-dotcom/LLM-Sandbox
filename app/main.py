@@ -15,7 +15,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.routes import health
+from app.api.errors import setup_exception_handlers
+from app.api.routes import challenges, health, runs
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
 
@@ -39,7 +40,13 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    # Register exception handlers
+    setup_exception_handlers(app)
+
+    # Mount API routers
     app.include_router(health.router)
+    app.include_router(challenges.router)
+    app.include_router(runs.router)
     return app
 
 

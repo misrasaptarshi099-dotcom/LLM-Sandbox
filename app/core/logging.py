@@ -14,19 +14,21 @@ import sys
 from typing import Any
 
 # Keys whose values must NEVER appear in logs.
-_REDACTED_KEYS = frozenset({
-    "authorization",
-    "api_key",
-    "api-key",
-    "openai_api_key",
-    "aes_256_gcm_secret",
-    "system_prompt",
-    "system_prompt_ciphertext",
-    "password",
-    "secret",
-    "token",
-    "dev_auth_token",
-})
+_REDACTED_KEYS = frozenset(
+    {
+        "authorization",
+        "api_key",
+        "api-key",
+        "openai_api_key",
+        "aes_256_gcm_secret",
+        "system_prompt",
+        "system_prompt_ciphertext",
+        "password",
+        "secret",
+        "token",
+        "dev_auth_token",
+    }
+)
 
 
 def _redact_value(val: Any) -> Any:

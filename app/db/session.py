@@ -39,12 +39,14 @@ def create_engine_from_url(url: str | None = None) -> AsyncEngine:
 
     # Apply connection pooling options for PostgreSQL/network databases
     if not db_url.startswith("sqlite"):
-        engine_kwargs.update({
-            "pool_size": 10,
-            "max_overflow": 5,
-            "pool_timeout": 2.0,
-            "pool_pre_ping": True,
-        })
+        engine_kwargs.update(
+            {
+                "pool_size": 10,
+                "max_overflow": 5,
+                "pool_timeout": 2.0,
+                "pool_pre_ping": True,
+            }
+        )
 
     return create_async_engine(db_url, **engine_kwargs)
 
