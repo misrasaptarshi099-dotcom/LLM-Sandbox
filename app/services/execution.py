@@ -40,7 +40,7 @@ logger: logging.Logger = get_logger("execution")
 
 # --- Constants ---
 RESPONSE_PREVIEW_MAX_CHARS: Final[int] = 500
-MAX_INTERNAL_RETRIES: Final[int] = 2
+MAX_INTERNAL_RETRIES: Final[int] = 5
 BACKOFF_BASE_SECONDS: Final[float] = 1.0
 # Heuristic budget: ~4 chars per token (same as TokenUsage.estimate)
 CHARS_PER_TOKEN_ESTIMATE: Final[int] = 4

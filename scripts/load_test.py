@@ -102,15 +102,19 @@ def _calc_percentiles(values: list[float]) -> dict[str, float]:
     }
 
 
-async def run_load_test(total_runs: int, concurrency: int) -> None:
+async def run_load_test(
+    total_runs: int,
+    concurrency: int,
+    base_url: str = "http://127.0.0.1:8000",
+) -> None:
     """Run concurrent load benchmark."""
     print("=" * 80)
     print(f"[LOAD TEST] Starting: {total_runs} runs across {concurrency} concurrent slots")
-    print(f"Target: {BASE_URL} | Model: gemini-3.5-flash-lite")
+    print(f"Target: {base_url} | Model: gemini-3.5-flash-lite")
     print("=" * 80)
 
     limits = httpx.Limits(max_connections=100, max_keepalive_connections=50)
-    async with httpx.AsyncClient(base_url=BASE_URL, timeout=60.0, limits=limits) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=60.0, limits=limits) as client:
         # Check health first
         try:
             health = await client.get("/health/live")
@@ -118,7 +122,7 @@ async def run_load_test(total_runs: int, concurrency: int) -> None:
                 print(f"[ERROR] API health check failed: {health.status_code}")
                 return
         except Exception as e:
-            print(f"[ERROR] Cannot connect to {BASE_URL}: {e}")
+            print(f"[ERROR] Cannot connect to {base_url}: {e}")
             return
 
         # Prepare submissions
@@ -235,8 +239,19 @@ async def run_load_test(total_runs: int, concurrency: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LLM Sandbox Load Testing Tool")
+    parser.add_argument(
+        "--url",
+        default=os.environ.get("BASE_URL", "http://127.0.0.1:8000"),
+        help="Base URL of the LLM Sandbox API (e.g. https://llm-sandbox-api.onrender.com)",
+    )
     parser.add_argument("--total", type=int, default=10, help="Total requests to submit")
     parser.add_argument("--concurrency", type=int, default=5, help="Concurrent submission slots")
     args = parser.parse_args()
 
-    asyncio.run(run_load_test(total_runs=args.total, concurrency=args.concurrency))
+    asyncio.run(
+        run_load_test(
+            total_runs=args.total,
+            concurrency=args.concurrency,
+            base_url=args.url,
+        )
+    )
