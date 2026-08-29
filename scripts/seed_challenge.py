@@ -65,6 +65,7 @@ async def seed(
         # 2. Seed Models
         models_data = [
             {"provider_code": "fake", "model_name": "mock-llm"},
+            {"provider_code": "gemini", "model_name": "gemini-3.5-flash-lite"},
             {"provider_code": "gemini", "model_name": "gemini-2.0-flash"},
             {"provider_code": "openai", "model_name": "gpt-4o-mini"},
             {"provider_code": "ollama", "model_name": "llama3.2:1b"},
@@ -155,7 +156,7 @@ async def seed(
                 await session.flush()
 
         # 5. Bind models to challenge version (runs for both new and existing challenges)
-        for model_name in ["mock-llm", "gemini-2.0-flash"]:
+        for model_name in ["gemini-3.5-flash-lite", "gemini-2.0-flash", "mock-llm"]:
             if model_name in model_map and version:
                 model_obj = model_map[model_name]
                 stmt = select(ChallengeModelBinding).where(
