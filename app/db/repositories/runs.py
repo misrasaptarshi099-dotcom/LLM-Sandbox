@@ -187,12 +187,6 @@ class RunRepository:
         rowcount = result.rowcount if isinstance(result, CursorResult) else 0
         return rowcount > 0
 
-    async def reset_run_for_retry(self, run_id: uuid.UUID) -> bool:
-        """Transition a RUNNING run back to QUEUED for retryable redelivery."""
-        stmt = update(Run).where(Run.id == run_id, Run.status == "RUNNING").values(status="QUEUED")
-        result = await self.session.execute(stmt)
-        return result.rowcount > 0
-
     async def finalize_run(
         self,
         run_id: uuid.UUID,
