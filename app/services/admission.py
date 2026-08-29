@@ -97,11 +97,7 @@ class AdmissionService:
         try:
             await self.queue.enqueue(
                 run_id=run.id,
-                metadata={
-                    "challenge_slug": ctx.challenge.slug,
-                    "model_name": ctx.model.model_name,
-                    "prompt": request.prompt,  # transient payload for worker
-                },
+                attempt=1,
             )
             # Commit only after queue has acknowledged receipt
             await self.session.commit()

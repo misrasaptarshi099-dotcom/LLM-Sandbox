@@ -38,6 +38,7 @@ async def seed(
         # 1. Seed Providers
         providers_data = [
             {"code": "fake", "kind": "FAKE"},
+            {"code": "gemini", "kind": "GEMINI"},
             {"code": "openai", "kind": "OPENAI_COMPATIBLE"},
             {"code": "ollama", "kind": "SELF_HOSTED"},
         ]
@@ -56,6 +57,7 @@ async def seed(
         # 2. Seed Models
         models_data = [
             {"provider_code": "fake", "model_name": "mock-llm"},
+            {"provider_code": "gemini", "model_name": "gemini-2.0-flash"},
             {"provider_code": "openai", "model_name": "gpt-4o-mini"},
             {"provider_code": "ollama", "model_name": "llama3.2:1b"},
         ]
@@ -125,13 +127,38 @@ async def seed(
             )
             session.add(version)
             await session.flush()
+        else:
+            stmt = select(ChallengeVersion).where(
+                ChallengeVersion.challenge_id == challenge.id,
+                ChallengeVersion.version_no == 1,
+            )
+            version = (await session.execute(stmt)).scalar_one_or_none()
+            if not version:
+                ciphertext = encrypt_system_prompt(raw_system_prompt)
+                prompt_hash = hash_text(raw_system_prompt)
+                version = ChallengeVersion(
+                    challenge_id=challenge.id,
+                    version_no=1,
+                    system_prompt_ciphertext=ciphertext,
+                    system_prompt_hash=prompt_hash,
+                    published_at=datetime.now(UTC),
+                )
+                session.add(version)
+                await session.flush()
 
-            # 5. Bind models to challenge version
-            for model_name in ["mock-llm", "gpt-4o-mini"]:
-                if model_name in model_map:
+        # 5. Bind models to challenge version (runs for both new and existing challenges)
+        for model_name in ["mock-llm", "gemini-2.0-flash"]:
+            if model_name in model_map and version:
+                model_obj = model_map[model_name]
+                stmt = select(ChallengeModelBinding).where(
+                    ChallengeModelBinding.challenge_version_id == version.id,
+                    ChallengeModelBinding.model_id == model_obj.id,
+                )
+                existing_binding = (await session.execute(stmt)).scalar_one_or_none()
+                if not existing_binding:
                     binding = ChallengeModelBinding(
                         challenge_version_id=version.id,
-                        model_id=model_map[model_name].id,
+                        model_id=model_obj.id,
                         max_input_tokens=2048,
                         max_output_tokens=512,
                         temperature=Decimal("0.700"),
