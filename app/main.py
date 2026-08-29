@@ -66,10 +66,18 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="LLM Sandbox",
-        description="Prompt Injection Challenge Backend — TechnoVIT / GDG VIT Chennai",
+        description="Prompt Injection Challenge Backend",
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    from fastapi.responses import RedirectResponse
+
+    @app.get("/", include_in_schema=False)
+    async def root() -> RedirectResponse:
+        """Redirect bare root to interactive Swagger UI documentation."""
+        return RedirectResponse(url="/docs")
+
     # Configure trusted proxy headers handling at ASGI boundary
     app.add_middleware(
         ProxyHeadersMiddleware,
