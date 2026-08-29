@@ -32,6 +32,14 @@ async def seed(
     """
     target_session_factory = custom_session_factory or async_session_factory
 
+    # Ensure tables exist (especially helpful for local SQLite and dev databases)
+    from app.db.base import Base
+
+    target_engine = target_session_factory.kw.get("bind")
+    if target_engine is not None:
+        async with target_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
     print("[INFO] Starting database seeding...")
 
     async with target_session_factory() as session:
