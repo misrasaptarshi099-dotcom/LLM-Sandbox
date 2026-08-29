@@ -27,6 +27,7 @@ from app.db.session import async_session_factory
 from app.providers.router import ProviderRouter
 from app.queue.base import AbstractQueue
 from app.queue.memory_queue import MemoryQueue
+from app.services.cost_tracker import CostTracker
 from app.services.execution import ExecutionService
 
 logger: logging.Logger = get_logger("worker")
@@ -45,6 +46,19 @@ def _create_queue() -> AbstractQueue:
     except Exception:
         logger.warning("Redis unavailable, falling back to in-memory queue")
         return MemoryQueue()
+
+
+def _create_cost_tracker() -> CostTracker:
+    """Create the appropriate CostTracker backend matching admission checks."""
+    settings = get_settings()
+    try:
+        import redis.asyncio as aioredis
+
+        client = aioredis.from_url(settings.redis_url, decode_responses=True)
+        return CostTracker(redis_client=client)
+    except Exception:
+        logger.warning("Redis unavailable for worker CostTracker, falling back to memory")
+        return CostTracker()
 
 
 async def _reclaim_loop(
@@ -76,6 +90,7 @@ async def _reclaim_loop(
 async def run_worker(
     queue: AbstractQueue | None = None,
     router: ProviderRouter | None = None,
+    cost_tracker: CostTracker | None = None,
     max_concurrent: int = DEFAULT_MAX_CONCURRENT,
     poll_interval: float = DEFAULT_POLL_INTERVAL,
     shutdown_event: asyncio.Event | None = None,
@@ -86,6 +101,7 @@ async def run_worker(
 
     queue = queue or _create_queue()
     router = router or ProviderRouter()
+    cost_tracker = cost_tracker or _create_cost_tracker()
     shutdown = shutdown_event or asyncio.Event()
     semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -93,6 +109,7 @@ async def run_worker(
         session_factory=async_session_factory,
         queue=queue,
         router=router,
+        cost_tracker=cost_tracker,
     )
 
     # Register signal handlers for graceful shutdown

@@ -33,7 +33,7 @@ from app.providers.base import (
     ProviderUnavailableError,
 )
 from app.providers.router import CircuitBreaker, ProviderRouter
-from app.queue.base import AbstractQueue, QueueJob
+from app.queue.base import MAX_ATTEMPTS, AbstractQueue, QueueJob
 from app.services.cost_tracker import CostTracker
 
 logger: logging.Logger = get_logger("execution")
@@ -126,6 +126,10 @@ class ExecutionService:
                 extra={"extra_fields": {"run_id": str(run_id), "error": str(exc)}},
             )
             await self._finalize_with_status(run_id, "SYSTEM_ERROR")
+            if self._cost_tracker is not None:
+                await self._cost_tracker.release_reservation(
+                    ctx.max_input_tokens, ctx.max_output_tokens
+                )
             await self._ack_job(job)
             return
 
@@ -144,6 +148,10 @@ class ExecutionService:
                 },
             )
             await self._finalize_with_status(run_id, "VALIDATION_ERROR")
+            if self._cost_tracker is not None:
+                await self._cost_tracker.release_reservation(
+                    ctx.max_input_tokens, ctx.max_output_tokens
+                )
             await self._ack_job(job)
             return
 
@@ -213,23 +221,33 @@ class ExecutionService:
         # --- Persist Result + Record Budget ---
         if response is not None:
             await self._finalize_success(run_id, response)
-            # Record token usage for event-wide budget (Phase 7)
+            # Reconcile reservation with actual token usage (Phase 7)
             if self._cost_tracker is not None:
-                await self._cost_tracker.record_usage(
-                    input_tokens=response.usage.prompt_tokens,
-                    output_tokens=response.usage.completion_tokens,
+                await self._cost_tracker.reconcile_reservation(
+                    reserved_input_tokens=ctx.max_input_tokens,
+                    reserved_output_tokens=ctx.max_output_tokens,
+                    actual_input_tokens=response.usage.prompt_tokens,
+                    actual_output_tokens=response.usage.completion_tokens,
                 )
             await self._ack_job(job)
         else:
-            # All retries exhausted or non-retryable error
-            terminal_status = _map_error_to_status(last_error) if last_error else "SYSTEM_ERROR"
-            await self._finalize_with_status(run_id, terminal_status)
+            # Check if queue-level redelivery is eligible
+            is_retryable = last_error is not None and last_error.retryable
+            can_requeue = is_retryable and job.attempt < MAX_ATTEMPTS
 
-            # NACK for queue-level redelivery if error was retryable
-            should_requeue = last_error is not None and last_error.retryable
-            if should_requeue:
+            if can_requeue:
+                # Reset run state to QUEUED so claim_run accepts it upon redelivery
+                await self._reset_run_to_queued(run_id)
                 await self._nack_job(job, requeue=True)
             else:
+                # Terminal finalization: release reservation and ACK job to prevent redelivery
+                terminal_status = _map_error_to_status(last_error) if last_error else "SYSTEM_ERROR"
+                await self._finalize_with_status(run_id, terminal_status)
+                if self._cost_tracker is not None:
+                    await self._cost_tracker.release_reservation(
+                        reserved_input_tokens=ctx.max_input_tokens,
+                        reserved_output_tokens=ctx.max_output_tokens,
+                    )
                 await self._ack_job(job)
 
     # --- Internal Helpers ---
@@ -286,6 +304,13 @@ class ExecutionService:
             "Run finalized with error status",
             extra={"extra_fields": {"run_id": str(run_id), "status": status}},
         )
+
+    async def _reset_run_to_queued(self, run_id) -> None:
+        """Transaction (retry path): Reset RUNNING run back to QUEUED for redelivery."""
+        async with self._session_factory() as session:
+            repo = RunRepository(session)
+            await repo.reset_run_for_retry(run_id)
+            await session.commit()
 
     async def _ack_job(self, job: QueueJob) -> None:
         """Acknowledge job completion to remove from in-flight."""

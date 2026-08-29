@@ -116,16 +116,7 @@ class AdmissionService:
                 extra={"extra_fields": {"error": str(exc)}},
             )
 
-        # 3b. Event-Wide Token Budget (Architecture §13, Phase 7)
-        if self.cost_tracker is not None:
-            budget_ok, budget_msg = await self.cost_tracker.check_budget()
-            if not budget_ok:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=budget_msg or "Event token budget exhausted.",
-                )
-
-        # 4. Resolve active challenge version & allowed model binding in 1 query (Rule §5)
+        # 3b. Resolve active challenge version & allowed model binding in 1 query (Rule §5)
         ctx = await self.challenge_repo.get_latest_live_binding(
             challenge_slug=request.challenge_slug,
             preferred_model_name=request.preferred_model,
@@ -140,7 +131,21 @@ class AdmissionService:
                 detail=msg,
             )
 
-        # 5. Create Run row in database
+        # 3c. Event-Wide Token Budget Reservation (Architecture §13, Phase 7)
+        reserved_input = ctx.binding.max_input_tokens
+        reserved_output = ctx.binding.max_output_tokens
+        if self.cost_tracker is not None:
+            budget_ok, budget_msg = await self.cost_tracker.reserve_tokens(
+                max_input_tokens=reserved_input,
+                max_output_tokens=reserved_output,
+            )
+            if not budget_ok:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=budget_msg or "Event token budget exhausted.",
+                )
+
+        # 4. Create Run row in database
         prompt_hash = hash_text(request.prompt)
         prompt_ciphertext = encrypt_system_prompt(request.prompt)
         run = await self.run_repo.create_run(
@@ -151,7 +156,7 @@ class AdmissionService:
             prompt_ciphertext=prompt_ciphertext,
         )
 
-        # 6. Enqueue run job with transactional rollback safety
+        # 5. Enqueue run job with transactional rollback safety
         try:
             await self.queue.enqueue(
                 run_id=run.id,
@@ -160,6 +165,11 @@ class AdmissionService:
             # Commit only after queue has acknowledged receipt
             await self.session.commit()
         except Exception as exc:
+            if self.cost_tracker is not None:
+                await self.cost_tracker.release_reservation(
+                    reserved_input_tokens=reserved_input,
+                    reserved_output_tokens=reserved_output,
+                )
             await self.session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

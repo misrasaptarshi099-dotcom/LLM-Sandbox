@@ -140,12 +140,12 @@ async def execution_env():
     await engine.dispose()
 
 
-def _make_job(run: Run) -> QueueJob:
+def _make_job(run: Run, attempt: int = 1) -> QueueJob:
     """Create a QueueJob for a run."""
     return QueueJob(
         job_id=f"job_{uuid.uuid4().hex}",
         run_id=run.id,
-        attempt=1,
+        attempt=attempt,
         delivery_token=uuid.uuid4().hex,
     )
 
@@ -231,8 +231,8 @@ class TestExecutionServiceHappyPath:
 
 class TestExecutionServiceProviderErrors:
     @pytest.mark.asyncio
-    async def test_provider_timeout_retries(self, execution_env):
-        """Retryable timeout → internal retries → eventual TIMEOUT status."""
+    async def test_provider_timeout_retries_requeues_when_attempts_remain(self, execution_env):
+        """Retryable timeout with attempts remaining resets run to QUEUED for redelivery."""
         env = execution_env
         queue = MemoryQueue()
 
@@ -240,7 +240,7 @@ class TestExecutionServiceProviderErrors:
             exception_to_raise=ProviderTimeoutError("Timed out", provider="fake"),
         )
         router = _make_router_with_fake(fake)
-        job = _make_job(env["run"])
+        job = _make_job(env["run"], attempt=1)
         queue._jobs[job.job_id] = job
         queue._in_flight[job.job_id] = (999999999.0, job.delivery_token)
 
@@ -250,7 +250,38 @@ class TestExecutionServiceProviderErrors:
             router=router,
         )
 
-        # Patch asyncio.sleep to avoid real delays during test
+        with patch("app.services.execution.asyncio.sleep", new_callable=AsyncMock):
+            await service.execute_run(job)
+
+        # Run should be reset to QUEUED so next worker can claim it
+        async with env["session_factory"]() as session:
+            repo = RunRepository(session)
+            run = await repo.get_run_with_result(env["run"].id)
+            assert run is not None
+            assert run.status == "QUEUED"
+
+    @pytest.mark.asyncio
+    async def test_provider_timeout_retries_finalizes_when_attempts_exhausted(self, execution_env):
+        """Retryable timeout on final attempt terminally finalizes to TIMEOUT and ACKs."""
+        from app.queue.base import MAX_ATTEMPTS
+
+        env = execution_env
+        queue = MemoryQueue()
+
+        fake = FakeLLMProvider(
+            exception_to_raise=ProviderTimeoutError("Timed out", provider="fake"),
+        )
+        router = _make_router_with_fake(fake)
+        job = _make_job(env["run"], attempt=MAX_ATTEMPTS)
+        queue._jobs[job.job_id] = job
+        queue._in_flight[job.job_id] = (999999999.0, job.delivery_token)
+
+        service = ExecutionService(
+            session_factory=env["session_factory"],
+            queue=queue,
+            router=router,
+        )
+
         with patch("app.services.execution.asyncio.sleep", new_callable=AsyncMock):
             await service.execute_run(job)
 
@@ -261,7 +292,7 @@ class TestExecutionServiceProviderErrors:
             assert run is not None
             assert run.status == "TIMEOUT"
 
-        # Job should be NACKed for requeue (retryable error)
+        # Terminal run must be ACKed, not requeued
         assert job.job_id not in queue._in_flight
 
     @pytest.mark.asyncio
@@ -300,7 +331,9 @@ class TestExecutionServiceProviderErrors:
 class TestExecutionServiceCircuitBreaker:
     @pytest.mark.asyncio
     async def test_circuit_breaker_open_skips_call(self, execution_env):
-        """Open breaker → immediate PROVIDER_ERROR without API call."""
+        """Open breaker → immediate PROVIDER_ERROR on final attempt without API call."""
+        from app.queue.base import MAX_ATTEMPTS
+
         env = execution_env
         queue = MemoryQueue()
         fake = FakeLLMProvider()
@@ -311,7 +344,7 @@ class TestExecutionServiceCircuitBreaker:
         for _ in range(breaker.failure_threshold):
             breaker.record_failure(ProviderUnavailableError())
 
-        job = _make_job(env["run"])
+        job = _make_job(env["run"], attempt=MAX_ATTEMPTS)
         queue._jobs[job.job_id] = job
         queue._in_flight[job.job_id] = (999999999.0, job.delivery_token)
 

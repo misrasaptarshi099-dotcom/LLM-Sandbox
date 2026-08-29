@@ -52,6 +52,32 @@ return {1, 'OK'}
 """
 
 
+_LUA_IP_RATE_LIMIT_SCRIPT = """
+local ip_key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local ip_limit = tonumber(ARGV[3])
+local member = ARGV[4]
+
+local clear_before = now - window
+
+-- Prune expired members
+redis.call('ZREMRANGEBYSCORE', ip_key, '-inf', clear_before)
+
+-- Check current count
+local ip_count = redis.call('ZCARD', ip_key)
+if ip_count >= ip_limit then
+    return {0, 'IP_LIMIT'}
+end
+
+-- Allowed: record attempt and refresh TTL
+redis.call('ZADD', ip_key, now, member)
+redis.call('EXPIRE', ip_key, math.ceil(window) + 5)
+
+return {1, 'OK'}
+"""
+
+
 class RateLimiter:
     """Sliding-window counter rate limiter."""
 
@@ -74,21 +100,19 @@ class RateLimiter:
         if self.redis is not None:
             try:
                 ip_key = f"ratelimit:ip:{ip_address}"
-                # Prune + check + record in one round-trip
-                pipe = self.redis.pipeline()
-                pipe.zremrangebyscore(ip_key, "-inf", now - window)
-                pipe.zcard(ip_key)
-                results = await pipe.execute()
-                ip_count = results[1]
-
-                if ip_count >= ip_limit:
-                    return False, "IP rate limit exceeded. Please try again shortly."
-
-                pipe2 = self.redis.pipeline()
-                pipe2.zadd(ip_key, {member: now})
-                pipe2.expire(ip_key, int(window) + 5)
-                await pipe2.execute()
-                return True, None
+                res = await self.redis.eval(
+                    _LUA_IP_RATE_LIMIT_SCRIPT,
+                    1,
+                    ip_key,
+                    str(now),
+                    str(window),
+                    str(ip_limit),
+                    member,
+                )
+                allowed = res[0]
+                if allowed == 1:
+                    return True, None
+                return False, "IP rate limit exceeded. Please try again shortly."
             except Exception as exc:
                 logger = get_logger("rate_limiter")
                 logger.warning(

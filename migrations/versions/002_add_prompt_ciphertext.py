@@ -21,14 +21,27 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Add prompt_ciphertext as nullable first for existing rows,
-    # then backfill and set NOT NULL.
+    # 1. Add prompt_ciphertext as nullable first for existing rows
     op.add_column(
         "runs",
         sa.Column("prompt_ciphertext", sa.Text(), nullable=True),
     )
-    # For any existing rows, set a placeholder (these runs cannot be re-executed).
-    op.execute("UPDATE runs SET prompt_ciphertext = '' WHERE prompt_ciphertext IS NULL")
+    # 2. Transition pre-migration non-terminal runs to SYSTEM_ERROR
+    # because they cannot be executed without participant prompt ciphertext.
+    op.execute(
+        "UPDATE runs SET status = 'SYSTEM_ERROR', finished_at = CURRENT_TIMESTAMP "
+        "WHERE prompt_ciphertext IS NULL AND status IN ('QUEUED', 'RUNNING')"
+    )
+    # 3. Backfill existing historical runs with a valid encrypted tombstone ciphertext
+    # so workers/tools do not encounter corrupt/empty ciphertext strings.
+    from app.core.security import encrypt_system_prompt
+
+    tombstone = encrypt_system_prompt("[UNAVAILABLE_HISTORICAL_RUN]")
+    bind = op.get_bind()
+    bind.execute(
+        sa.text("UPDATE runs SET prompt_ciphertext = :tombstone WHERE prompt_ciphertext IS NULL"),
+        {"tombstone": tombstone},
+    )
     op.alter_column("runs", "prompt_ciphertext", nullable=False)
 
 

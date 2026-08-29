@@ -56,10 +56,11 @@ class Settings(BaseSettings):
         "127.0.0.1",
     ]
 
-    # --- Rate Limiting ---
+    # --- Rate Limiting & Network ---
     rate_limit_per_user_per_minute: int = 30
     rate_limit_per_ip_per_minute: int = 60
     rate_limit_global_per_minute: int = 300
+    trusted_proxies: list[str] = ["127.0.0.1", "::1"]
 
     # --- Admission Control ---
     max_queue_depth: int = 1000
