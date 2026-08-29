@@ -92,7 +92,7 @@ class RedisQueue(AbstractQueue):
             now = time.time()
             expires_at = now + visibility_timeout_seconds
             new_delivery_token = uuid.uuid4().hex
-            
+
             try:
                 raw = await self._client.eval(
                     lua_dequeue,

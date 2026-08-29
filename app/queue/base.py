@@ -71,7 +71,9 @@ class AbstractQueue(ABC):
         ...
 
     @abstractmethod
-    async def nack(self, job_id: str, delivery_token: str | None = None, requeue: bool = True) -> bool:
+    async def nack(
+        self, job_id: str, delivery_token: str | None = None, requeue: bool = True
+    ) -> bool:
         """Negative acknowledge.
 
         If requeue is True and attempt < MAX_ATTEMPTS, requeues for retry.

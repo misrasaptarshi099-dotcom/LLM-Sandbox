@@ -190,9 +190,7 @@ def validate_provider_url(
 
     # Validate allowed hosts whitelist
     if not allowed_hosts:
-        raise ProviderSecurityError(
-            "Allowed hosts whitelist is required and cannot be empty."
-        )
+        raise ProviderSecurityError("Allowed hosts whitelist is required and cannot be empty.")
 
     allowed_set = {h.lower() for h in allowed_hosts}
     if hostname not in allowed_set:

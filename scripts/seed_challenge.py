@@ -128,12 +128,9 @@ async def seed(
             session.add(version)
             await session.flush()
         else:
-            stmt = (
-                select(ChallengeVersion)
-                .where(
-                    ChallengeVersion.challenge_id == challenge.id,
-                    ChallengeVersion.version_no == 1,
-                )
+            stmt = select(ChallengeVersion).where(
+                ChallengeVersion.challenge_id == challenge.id,
+                ChallengeVersion.version_no == 1,
             )
             version = (await session.execute(stmt)).scalar_one_or_none()
             if not version:

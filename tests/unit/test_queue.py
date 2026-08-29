@@ -169,4 +169,3 @@ async def test_memory_queue_token_lease_rejection() -> None:
 
     # Correct token succeeds
     assert await queue.ack(job_id, delivery_token=job.delivery_token) is True
-
