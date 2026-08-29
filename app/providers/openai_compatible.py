@@ -192,7 +192,21 @@ class OpenAICompatibleProvider(LLMProvider):
         )
 
     async def health_check(self) -> bool:
-        return bool(self.api_key)
+        if not self.api_key:
+            return False
+        endpoint = f"{self.base_url}/models"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+        }
+        try:
+            response = await self._client.get(
+                endpoint,
+                headers=headers,
+                timeout=min(self.timeout_seconds, 5.0),
+            )
+            return response.status_code == 200
+        except (httpx.RequestError, httpx.TimeoutException, Exception):
+            return False
 
     def supports_model(self, model_name: str) -> bool:
         return bool(model_name)

@@ -189,12 +189,16 @@ def validate_provider_url(
         raise ProviderSecurityError(f"Unsupported URL scheme: {parsed.scheme}")
 
     # Validate allowed hosts whitelist
-    if allowed_hosts:
-        allowed_set = {h.lower() for h in allowed_hosts}
-        if hostname not in allowed_set:
-            raise ProviderSecurityError(
-                f"Provider host '{hostname}' is not in the configured host allowlist."
-            )
+    if not allowed_hosts:
+        raise ProviderSecurityError(
+            "Allowed hosts whitelist is required and cannot be empty."
+        )
+
+    allowed_set = {h.lower() for h in allowed_hosts}
+    if hostname not in allowed_set:
+        raise ProviderSecurityError(
+            f"Provider host '{hostname}' is not in the configured host allowlist."
+        )
 
     return url.strip().rstrip("/")
 

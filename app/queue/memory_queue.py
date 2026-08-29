@@ -23,17 +23,18 @@ class MemoryQueue(AbstractQueue):
         self._lock = asyncio.Lock()
         self._waiting: deque[str] = deque()
         self._jobs: dict[str, QueueJob] = {}
-        self._in_flight: dict[str, float] = {}  # job_id -> expires_at
+        self._in_flight: dict[str, tuple[float, str]] = {}  # job_id -> (expires_at, delivery_token)
         self._dead_letter: list[QueueJob] = []
 
     async def enqueue(self, run_id: uuid.UUID, attempt: int = 1) -> str:
         async with self._lock:
-            job_id = f"job_{uuid.uuid4().hex[:12]}"
+            job_id = f"job_{uuid.uuid4().hex}"
             job = QueueJob(
                 job_id=job_id,
                 run_id=run_id,
                 attempt=attempt,
                 enqueued_at=time.time(),
+                delivery_token=uuid.uuid4().hex,
             )
             self._jobs[job_id] = job
             self._waiting.append(job_id)
@@ -52,23 +53,36 @@ class MemoryQueue(AbstractQueue):
                     job_id = self._waiting.popleft()
                     if job_id in self._jobs:
                         job = self._jobs[job_id]
+                        delivery_token = uuid.uuid4().hex
+                        job.delivery_token = delivery_token
                         expires_at = time.time() + visibility_timeout_seconds
-                        self._in_flight[job_id] = expires_at
+                        self._in_flight[job_id] = (expires_at, delivery_token)
                         return job
             await asyncio.sleep(0.02)
         return None
 
-    async def ack(self, job_id: str) -> bool:
+    async def ack(self, job_id: str, delivery_token: str | None = None) -> bool:
         async with self._lock:
             if job_id in self._in_flight:
+                expires_at, active_token = self._in_flight[job_id]
+                if delivery_token is not None and active_token != delivery_token:
+                    return False
                 del self._in_flight[job_id]
                 self._jobs.pop(job_id, None)
                 return True
             return False
 
-    async def nack(self, job_id: str, requeue: bool = True) -> bool:
+    async def nack(
+        self,
+        job_id: str,
+        delivery_token: str | None = None,
+        requeue: bool = True,
+    ) -> bool:
         async with self._lock:
             if job_id not in self._in_flight:
+                return False
+            expires_at, active_token = self._in_flight[job_id]
+            if delivery_token is not None and active_token != delivery_token:
                 return False
             del self._in_flight[job_id]
 
@@ -92,7 +106,7 @@ class MemoryQueue(AbstractQueue):
         reclaimed_count = 0
         async with self._lock:
             timed_out_ids = [
-                jid for jid, expires_at in self._in_flight.items() if now >= expires_at
+                jid for jid, (expires_at, _) in self._in_flight.items() if now >= expires_at
             ]
             for jid in timed_out_ids:
                 del self._in_flight[jid]

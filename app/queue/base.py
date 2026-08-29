@@ -25,6 +25,7 @@ class QueueJob:
     run_id: uuid.UUID
     attempt: int = 1
     enqueued_at: float = field(default_factory=time.time)
+    delivery_token: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     def to_dict(self) -> dict[str, str | int | float]:
         return {
@@ -32,6 +33,7 @@ class QueueJob:
             "run_id": str(self.run_id),
             "attempt": self.attempt,
             "enqueued_at": self.enqueued_at,
+            "delivery_token": self.delivery_token,
         }
 
     @classmethod
@@ -41,6 +43,7 @@ class QueueJob:
             run_id=uuid.UUID(str(data["run_id"])),
             attempt=int(data.get("attempt", 1)),
             enqueued_at=float(data.get("enqueued_at", time.time())),
+            delivery_token=str(data.get("delivery_token", "")),
         )
 
 
@@ -63,12 +66,12 @@ class AbstractQueue(ABC):
         ...
 
     @abstractmethod
-    async def ack(self, job_id: str) -> bool:
+    async def ack(self, job_id: str, delivery_token: str | None = None) -> bool:
         """Acknowledge successful job processing and remove from in-flight."""
         ...
 
     @abstractmethod
-    async def nack(self, job_id: str, requeue: bool = True) -> bool:
+    async def nack(self, job_id: str, delivery_token: str | None = None, requeue: bool = True) -> bool:
         """Negative acknowledge.
 
         If requeue is True and attempt < MAX_ATTEMPTS, requeues for retry.

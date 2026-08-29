@@ -136,8 +136,11 @@ async def test_redis_queue_with_fakeredis() -> None:
     assert metrics["queued"] == 0
     assert metrics["in_flight"] == 1
 
-    # Ack
-    acked = await queue.ack(job_id)
+    # Ack with invalid delivery token must fail
+    assert await queue.ack(job_id, delivery_token="invalid_token") is False
+
+    # Ack with valid delivery token must succeed
+    acked = await queue.ack(job_id, delivery_token=job.delivery_token)
     assert acked is True
 
     metrics_after = await queue.get_metrics()
@@ -145,3 +148,25 @@ async def test_redis_queue_with_fakeredis() -> None:
     assert metrics_after["queued"] == 0
 
     await fake_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_memory_queue_token_lease_rejection() -> None:
+    queue = MemoryQueue()
+    run_id = uuid.uuid4()
+    job_id = await queue.enqueue(run_id)
+
+    # Job ID should have full 32-hex UUID (len("job_") + 32 = 36)
+    assert len(job_id) == 36
+
+    job = await queue.dequeue(timeout_seconds=0.1)
+    assert job is not None
+    assert bool(job.delivery_token)
+
+    # Stale/incorrect token fails ACK & NACK
+    assert await queue.ack(job_id, delivery_token="stale-token") is False
+    assert await queue.nack(job_id, delivery_token="stale-token") is False
+
+    # Correct token succeeds
+    assert await queue.ack(job_id, delivery_token=job.delivery_token) is True
+

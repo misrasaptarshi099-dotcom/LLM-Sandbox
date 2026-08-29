@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import time
 
+from app.core.config import get_settings
 from app.providers.base import (
     LLMProvider,
     ProviderAuthError,
@@ -88,7 +89,8 @@ class ProviderRouter:
         base_url: str | None = None,
     ) -> LLMProvider:
         """Resolve or instantiate provider instance for given kind."""
-        cache_key = f"{provider_kind.upper()}:{provider_code}:{base_url or ''}"
+        key_fingerprint = f"key:{hash(api_key)}" if api_key else "nokey"
+        cache_key = f"{provider_kind.upper()}:{provider_code}:{base_url or ''}:{key_fingerprint}"
 
         if cache_key in self._providers:
             return self._providers[cache_key]
@@ -102,6 +104,7 @@ class ProviderRouter:
             provider_instance = GeminiProvider(
                 api_key=api_key,
                 base_url=base_url,
+                timeout_seconds=get_settings().provider_timeout_seconds,
             )
         elif kind_upper == "OPENAI_COMPATIBLE":
             provider_instance = OpenAICompatibleProvider(

@@ -300,6 +300,46 @@ def test_provider_router_resolves_kinds() -> None:
     assert isinstance(self_hosted_p, SelfHostedProvider)
 
 
+def test_provider_router_caches_per_credential() -> None:
+    router = ProviderRouter()
+    p1 = router.get_provider("GEMINI", api_key="key-1")
+    p2 = router.get_provider("GEMINI", api_key="key-2")
+    p1_again = router.get_provider("GEMINI", api_key="key-1")
+
+    assert p1 is not p2
+    assert p1 is p1_again
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_health_check() -> None:
+    # 1. No API key -> False
+    p_no_key = OpenAICompatibleProvider(api_key="", client=httpx.AsyncClient())
+    assert await p_no_key.health_check() is False
+
+    # 2. Success (200) -> True
+    def ok_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": []})
+
+    client_ok = httpx.AsyncClient(transport=httpx.MockTransport(ok_handler))
+    p_ok = OpenAICompatibleProvider(api_key="sk-test", client=client_ok)
+    assert await p_ok.health_check() is True
+
+    # 3. Error (500) -> False
+    def err_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="Server Error")
+
+    client_err = httpx.AsyncClient(transport=httpx.MockTransport(err_handler))
+    p_err = OpenAICompatibleProvider(api_key="sk-test", client=client_err)
+    assert await p_err.health_check() is False
+
+
+def test_validate_provider_url_rejects_empty_allowlist() -> None:
+    with pytest.raises(ProviderSecurityError, match="cannot be empty"):
+        validate_provider_url("https://api.openai.com/v1", allowed_hosts=[])
+    with pytest.raises(ProviderSecurityError, match="cannot be empty"):
+        validate_provider_url("https://api.openai.com/v1", allowed_hosts=None)
+
+
 def test_llm_request_repr_redacts_api_key_and_prompts() -> None:
     req = LLMRequest(
         system_prompt="SUPER_SECRET_SYSTEM_PROMPT",
