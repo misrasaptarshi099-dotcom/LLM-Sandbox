@@ -10,8 +10,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from typing import Any
+
+# Regex patterns for high-entropy secrets and provider API keys
+_BEARER_PATTERN = re.compile(r"Bearer\s+[^\s\"']+", re.IGNORECASE)
+_OPENAI_KEY_PATTERN = re.compile(r"\bsk-[a-zA-Z0-9_-]{20,}\b")
+_GEMINI_KEY_PATTERN = re.compile(r"\bAIzaSy[a-zA-Z0-9_-]{33}\b")
 
 # Keys whose values must NEVER appear in logs.
 _REDACTED_KEYS = frozenset(
@@ -19,23 +25,32 @@ _REDACTED_KEYS = frozenset(
         "authorization",
         "api_key",
         "api-key",
+        "apikey",
         "openai_api_key",
+        "gemini_api_key",
         "aes_256_gcm_secret",
         "system_prompt",
         "system_prompt_ciphertext",
+        "prompt",
+        "prompt_ciphertext",
+        "user_prompt",
+        "raw_prompt",
         "password",
         "secret",
         "token",
         "dev_auth_token",
+        "key",
     }
 )
 
 
 def _redact_string(text: str) -> str:
     """Redact bearer token / secret string patterns if present in strings."""
-    if "Bearer " in text:
-        parts = text.split("Bearer ")
-        return parts[0] + "Bearer **REDACTED**"
+    if not text:
+        return text
+    text = _BEARER_PATTERN.sub("Bearer **REDACTED**", text)
+    text = _OPENAI_KEY_PATTERN.sub("sk-**REDACTED**", text)
+    text = _GEMINI_KEY_PATTERN.sub("AIzaSy**REDACTED**", text)
     return text
 
 

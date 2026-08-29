@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import Literal
 
 from sqlalchemy import and_, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -176,13 +177,15 @@ class RunRepository:
             )
         )
         result = await self.session.execute(stmt)
-        return result.rowcount > 0
+        rowcount = result.rowcount if isinstance(result, CursorResult) else 0
+        return rowcount > 0
 
     async def reset_run_for_retry(self, run_id: uuid.UUID) -> bool:
         """Transition a RUNNING run back to QUEUED for retryable redelivery."""
         stmt = update(Run).where(Run.id == run_id, Run.status == "RUNNING").values(status="QUEUED")
         result = await self.session.execute(stmt)
-        return result.rowcount > 0
+        rowcount = result.rowcount if isinstance(result, CursorResult) else 0
+        return rowcount > 0
 
     async def finalize_run(
         self,
@@ -210,7 +213,8 @@ class RunRepository:
             )
         )
         result = await self.session.execute(stmt)
-        if result.rowcount == 0:
+        rowcount = result.rowcount if isinstance(result, CursorResult) else 0
+        if rowcount == 0:
             return False
 
         # Upsert or insert RunResult

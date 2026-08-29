@@ -62,8 +62,9 @@ class Settings(BaseSettings):
     rate_limit_global_per_minute: int = 300
     trusted_proxies: list[str] = ["127.0.0.1", "::1"]
 
-    # --- Admission Control ---
+    # --- Admission Control & Size Limits ---
     max_queue_depth: int = 1000
+    max_request_body_bytes: int = 65_536
 
     # --- Provider Concurrency ---
     provider_max_concurrency: int = 10

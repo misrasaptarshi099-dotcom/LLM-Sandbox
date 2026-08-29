@@ -44,6 +44,16 @@ def test_validate_provider_url_rejects_insecure_http_on_remote() -> None:
         validate_provider_url("http://api.openai.com/v1", allowed)
 
 
+def test_validate_provider_url_rejects_cloud_metadata_endpoints() -> None:
+    # Even if an attacker configures or injects metadata IPs into allowed_hosts
+    allowed = ["169.254.169.254", "metadata.google.internal", "api.openai.com"]
+    with pytest.raises(ProviderSecurityError, match="cloud metadata or internal endpoint"):
+        validate_provider_url("http://169.254.169.254/latest/meta-data/", allowed)
+
+    with pytest.raises(ProviderSecurityError, match="cloud metadata or internal endpoint"):
+        validate_provider_url("http://metadata.google.internal/computeMetadata/v1/", allowed)
+
+
 def test_validate_provider_url_rejects_embedded_credentials() -> None:
     with pytest.raises(ProviderSecurityError, match="Embedded credentials"):
         validate_provider_url("https://user:password@api.openai.com/v1")

@@ -47,8 +47,14 @@ jobs:
       - name: Run Ruff Format Check
         run: uv run ruff format --check app/ tests/ scripts/ migrations/
 
+      - name: Run Mypy Type Checker
+        run: uv run mypy app/
+
       - name: Run Pytest Suite
         run: uv run pytest -v
+
+      - name: Run Dependency Security Audit
+        run: uvx pip-audit
 
       - name: Build Wheel Package
         run: uv build

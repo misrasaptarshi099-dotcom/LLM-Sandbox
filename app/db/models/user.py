@@ -42,5 +42,10 @@ class User(Base):
         nullable=False,
     )
 
-    # Relationships
-    runs = relationship("Run", back_populates="user", cascade="all, delete-orphan")
+    # Relationships — lazy="raise" prevents un-eager-loaded queries
+    runs = relationship(
+        "Run",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="raise",
+    )

@@ -175,6 +175,18 @@ def validate_provider_url(
 
     hostname = parsed.hostname.lower()
 
+    # Explicit SSRF protection against cloud metadata services
+    _blocked_metadata = {
+        "169.254.169.254",
+        "metadata.google.internal",
+        "metadata.internal",
+        "100.100.100.200",
+    }
+    if hostname in _blocked_metadata or hostname.endswith(".internal"):
+        raise ProviderSecurityError(
+            f"Access to cloud metadata or internal endpoint '{hostname}' is strictly forbidden."
+        )
+
     if parsed.username or parsed.password:
         raise ProviderSecurityError("Embedded credentials in provider URL are strictly forbidden.")
 

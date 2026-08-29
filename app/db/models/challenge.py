@@ -52,10 +52,11 @@ class Challenge(Base):
         nullable=False,
     )
 
-    # Relationships
+    # Relationships — lazy="raise" prevents un-eager-loaded queries
     versions = relationship(
         "ChallengeVersion",
         back_populates="challenge",
         cascade="all, delete-orphan",
         order_by="desc(ChallengeVersion.version_no)",
+        lazy="raise",
     )

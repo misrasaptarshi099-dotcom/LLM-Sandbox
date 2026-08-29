@@ -33,6 +33,8 @@ dev = [
     "ruff>=0.6,<1",                # linting + formatting
     "fakeredis>=2.23,<3",          # in-memory Redis for tests
     "aiosqlite>=0.20,<1",          # in-memory async SQLite for test suites
+    "mypy>=1.11,<2",               # static type checker
+    "types-redis>=4.6,<5",         # type stubs for redis
 ]
 
 [tool.pytest.ini_options]
@@ -42,6 +44,14 @@ filterwarnings = [
     "error",
     "ignore::DeprecationWarning:pytest_asyncio",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+check_untyped_defs = true
 
 [tool.ruff]
 target-version = "py312"
