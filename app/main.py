@@ -83,6 +83,16 @@ def create_app() -> FastAPI:
         ProxyHeadersMiddleware,
         trusted_hosts=settings.trusted_proxies,
     )
+    # Enable CORS for browser fetch requests and Swagger UI
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     # Enforce request body size limit before route dispatch
     app.add_middleware(RequestSizeLimitMiddleware)
 
