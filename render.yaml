@@ -16,7 +16,7 @@ services:
           name: llm-sandbox-db
           property: connectionString
       - key: APP_ENV
-        value: production
+        value: development
       - key: EMBEDDED_WORKER
         value: "true"
       - key: LOG_LEVEL
