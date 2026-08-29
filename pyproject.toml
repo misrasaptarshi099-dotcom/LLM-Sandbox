@@ -22,19 +22,20 @@ dependencies = [
     "httpx>=0.27,<1",              # async HTTP for LLM provider calls
 
     # --- Security ---
-    "cryptography>=43,<45",        # AES-256-GCM system prompt encryption
+    "cryptography>=50,<51",        # AES-256-GCM system prompt encryption
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8,<9",
-    "pytest-asyncio>=0.24,<1",
+    "pytest>=9,<10",
+    "pytest-asyncio>=0.24",
     "httpx",                       # TestClient transport
     "ruff>=0.6,<1",                # linting + formatting
     "fakeredis>=2.23,<3",          # in-memory Redis for tests
     "aiosqlite>=0.20,<1",          # in-memory async SQLite for test suites
     "mypy>=1.11,<2",               # static type checker
     "types-redis>=4.6,<5",         # type stubs for redis
+    "pip-audit>=2.7,<3",           # dependency vulnerability scanner
 ]
 
 [tool.pytest.ini_options]

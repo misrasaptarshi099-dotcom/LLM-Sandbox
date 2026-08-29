@@ -54,7 +54,7 @@ jobs:
         run: uv run pytest -v
 
       - name: Run Dependency Security Audit
-        run: uvx pip-audit
+        run: uv run pip-audit
 
       - name: Build Wheel Package
         run: uv build

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -48,7 +49,8 @@ def create_engine_from_url(url: str | None = None) -> AsyncEngine:
             }
         )
 
-    return create_async_engine(db_url, **engine_kwargs)
+    parsed_url = make_url(db_url)
+    return create_async_engine(parsed_url, **engine_kwargs)
 
 
 # Module-level engine and sessionmaker singleton

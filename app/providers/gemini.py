@@ -26,6 +26,7 @@ from app.providers.base import (
     ProviderTimeoutError,
     ProviderUnavailableError,
     TokenUsage,
+    create_dns_rebinding_validator,
     validate_provider_url,
 )
 
@@ -51,6 +52,7 @@ class GeminiProvider(LLMProvider):
         self._client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(self.timeout_seconds, connect=10.0),
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
+            event_hooks={"request": [create_dns_rebinding_validator(allow_http_localhost=False)]},
         )
         self._owned_client = client is None
 

@@ -66,6 +66,93 @@ def test_validate_provider_url_rejects_invalid_strings() -> None:
         validate_provider_url("not_a_url")
 
 
+def test_validate_provider_url_canonicalizes_trailing_dots() -> None:
+    allowed = ["api.openai.com"]
+    # Host with trailing dot should canonicalize to api.openai.com and match allowlist
+    assert (
+        validate_provider_url("https://api.openai.com./v1", allowed) == "https://api.openai.com./v1"
+    )
+
+
+def test_validate_provider_url_rejects_trailing_dot_metadata() -> None:
+    allowed = ["169.254.169.254.", "metadata.google.internal."]
+    with pytest.raises(ProviderSecurityError, match="cloud metadata or internal endpoint"):
+        validate_provider_url("http://169.254.169.254./latest/meta-data/", allowed)
+
+    with pytest.raises(ProviderSecurityError, match="cloud metadata or internal endpoint"):
+        validate_provider_url("http://metadata.google.internal./computeMetadata/v1/", allowed)
+
+
+@pytest.mark.parametrize(
+    "ip_url",
+    [
+        "https://10.0.0.1/v1",
+        "https://192.168.1.1/v1",
+        "https://172.16.0.1/v1",
+        "https://0.0.0.0/v1",
+        "https://169.254.1.1/v1",
+    ],
+)
+def test_validate_provider_url_rejects_nonglobal_ipv4_literals(ip_url: str) -> None:
+    from urllib.parse import urlparse
+
+    host = urlparse(ip_url).hostname
+    with pytest.raises(ProviderSecurityError, match="Non-global IP address"):
+        validate_provider_url(ip_url, allowed_hosts=[host])
+
+
+@pytest.mark.parametrize(
+    "ip_url",
+    [
+        "https://[fd00::1]/v1",
+        "https://[fe80::1]/v1",
+        "https://[::]/v1",
+    ],
+)
+def test_validate_provider_url_rejects_nonglobal_ipv6_literals(ip_url: str) -> None:
+    from urllib.parse import urlparse
+
+    host = urlparse(ip_url).hostname
+    with pytest.raises(ProviderSecurityError, match="Non-global IP address"):
+        validate_provider_url(ip_url, allowed_hosts=[host])
+
+
+def test_validate_provider_url_rejects_private_dns_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import socket
+
+    # Simulate a domain that resolves to a private IP (e.g. 10.0.0.5)
+    def mock_getaddrinfo(host, port):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 443))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", mock_getaddrinfo)
+    with pytest.raises(ProviderSecurityError, match="resolved to non-global address"):
+        validate_provider_url(
+            "https://attacker-private-dns.com/v1",
+            allowed_hosts=["attacker-private-dns.com"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_dns_rebinding_pre_connection_validator(monkeypatch: pytest.MonkeyPatch) -> None:
+    import socket
+
+    from app.providers.base import create_dns_rebinding_validator
+
+    validator = create_dns_rebinding_validator(allow_http_localhost=False)
+
+    # Initial check might have been fine, but immediately before connect DNS rebinds to 127.0.0.1
+    def mock_getaddrinfo(host, port):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", mock_getaddrinfo)
+
+    request = httpx.Request("POST", "https://rebind.attacker.com/v1/chat")
+    with pytest.raises(ProviderSecurityError, match="resolved to non-global address"):
+        await validator(request)
+
+
 # --- Fake Provider Tests ---
 @pytest.mark.asyncio
 async def test_fake_provider_deterministic_response() -> None:

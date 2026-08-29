@@ -44,7 +44,7 @@ class RunRepositoryProtocol(Protocol):
         """Fetch all execution context for a run in exactly 1 bounded query join."""
         ...
 
-    async def claim_next_run(self, run_id: uuid.UUID) -> bool:
+    async def claim_run(self, run_id: uuid.UUID) -> bool:
         """Atomic claim transition QUEUED -> RUNNING with attempt increment."""
         ...
 
