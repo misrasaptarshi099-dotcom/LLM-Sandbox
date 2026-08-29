@@ -245,4 +245,4 @@ class RedisQueue(AbstractQueue):
         return await self._client.llen(self.waiting_key)
 
     async def close(self) -> None:
-        await self._client.aclose()
+        await self._client.close()

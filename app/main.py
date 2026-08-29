@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.api.errors import setup_exception_handlers
+from app.api.middleware import RequestSizeLimitMiddleware
 from app.api.routes import challenges, health, runs
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
@@ -47,6 +48,8 @@ def create_app() -> FastAPI:
         ProxyHeadersMiddleware,
         trusted_hosts=settings.trusted_proxies,
     )
+    # Enforce request body size limit before route dispatch
+    app.add_middleware(RequestSizeLimitMiddleware)
 
     # Register exception handlers
     setup_exception_handlers(app)

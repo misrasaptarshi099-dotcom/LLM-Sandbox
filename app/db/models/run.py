@@ -97,12 +97,13 @@ class Run(Base):
         nullable=True,
     )
 
-    # Relationships
-    user = relationship("User", back_populates="runs")
-    model_binding = relationship("ChallengeModelBinding", back_populates="runs")
+    # Relationships — lazy="raise" prevents un-eager-loaded queries on hot paths
+    user = relationship("User", back_populates="runs", lazy="raise")
+    model_binding = relationship("ChallengeModelBinding", back_populates="runs", lazy="raise")
     result = relationship(
         "RunResult",
         back_populates="run",
         uselist=False,
         cascade="all, delete-orphan",
+        lazy="raise",
     )

@@ -27,6 +27,25 @@ class Settings(BaseSettings):
 
     # --- Database ---
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/llm_sandbox"
+    postgres_user: str | None = None
+    postgres_password: str | None = None
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+    postgres_db: str | None = None
+
+    @model_validator(mode="after")
+    def assemble_database_url(self) -> Settings:
+        """Safely encode credentials when discrete postgres parameters are provided."""
+        if self.postgres_user and self.postgres_password and self.postgres_db:
+            from urllib.parse import quote_plus
+
+            safe_user = quote_plus(self.postgres_user)
+            safe_pass = quote_plus(self.postgres_password)
+            self.database_url = (
+                f"postgresql+asyncpg://{safe_user}:{safe_pass}@"
+                f"{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            )
+        return self
 
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
@@ -62,8 +81,9 @@ class Settings(BaseSettings):
     rate_limit_global_per_minute: int = 300
     trusted_proxies: list[str] = ["127.0.0.1", "::1"]
 
-    # --- Admission Control ---
+    # --- Admission Control & Size Limits ---
     max_queue_depth: int = 1000
+    max_request_body_bytes: int = 65_536
 
     # --- Provider Concurrency ---
     provider_max_concurrency: int = 10

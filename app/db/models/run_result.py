@@ -67,5 +67,5 @@ class RunResult(Base):
         nullable=False,
     )
 
-    # Relationships
-    run = relationship("Run", back_populates="result")
+    # Relationships — lazy="raise" prevents un-eager-loaded queries
+    run = relationship("Run", back_populates="result", lazy="raise")

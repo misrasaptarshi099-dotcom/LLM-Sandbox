@@ -68,10 +68,11 @@ class ChallengeVersion(Base):
         nullable=True,
     )
 
-    # Relationships
-    challenge = relationship("Challenge", back_populates="versions")
+    # Relationships — lazy="raise" prevents un-eager-loaded queries
+    challenge = relationship("Challenge", back_populates="versions", lazy="raise")
     bindings = relationship(
         "ChallengeModelBinding",
         back_populates="challenge_version",
         cascade="all, delete-orphan",
+        lazy="raise",
     )

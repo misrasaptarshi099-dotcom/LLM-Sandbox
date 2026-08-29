@@ -39,5 +39,10 @@ class Provider(Base):
         nullable=False,
     )
 
-    # Relationships
-    models = relationship("Model", back_populates="provider", cascade="all, delete-orphan")
+    # Relationships — lazy="raise" prevents un-eager-loaded queries
+    models = relationship(
+        "Model",
+        back_populates="provider",
+        cascade="all, delete-orphan",
+        lazy="raise",
+    )

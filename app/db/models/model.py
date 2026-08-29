@@ -57,6 +57,6 @@ class Model(Base):
         nullable=False,
     )
 
-    # Relationships
-    provider = relationship("Provider", back_populates="models")
-    bindings = relationship("ChallengeModelBinding", back_populates="model")
+    # Relationships — lazy="raise" prevents un-eager-loaded queries
+    provider = relationship("Provider", back_populates="models", lazy="raise")
+    bindings = relationship("ChallengeModelBinding", back_populates="model", lazy="raise")

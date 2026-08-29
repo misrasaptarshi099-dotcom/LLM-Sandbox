@@ -9,9 +9,14 @@ Rules §2, §3, Architecture §5, Implementation Plan Phase 5:
 
 from __future__ import annotations
 
+import ipaddress
+import socket
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlparse
+
+import httpx
 
 
 # --- Exceptions ---
@@ -155,6 +160,81 @@ class LLMResponse:
 
 
 # --- Security Validation ---
+def validate_host_ip_targets(
+    hostname: str,
+    allow_http_localhost: bool = True,
+) -> None:
+    """Validate that hostname does not target private, loopback, link-local, or metadata IPs.
+
+    Guards against SSRF, private DNS, and DNS rebinding attacks.
+    """
+    canonical_host = hostname.lower().rstrip(".")
+
+    # 1. Check IP literal (IPv4 or IPv6)
+    try:
+        ip = ipaddress.ip_address(canonical_host)
+        is_ip = True
+    except ValueError:
+        is_ip = False
+
+    if is_ip:
+        if allow_http_localhost and ip.is_loopback:
+            return
+        if not ip.is_global:
+            raise ProviderSecurityError(
+                f"Non-global IP address '{hostname}' is strictly forbidden for provider endpoints."
+            )
+        return
+
+    # 2. Check localhost literal
+    if canonical_host in {"localhost"}:
+        if allow_http_localhost:
+            return
+        raise ProviderSecurityError(
+            f"Localhost destination '{hostname}' is not permitted for remote providers."
+        )
+
+    # 3. DNS resolution validation
+    try:
+        addrinfo = socket.getaddrinfo(canonical_host, None)
+    except socket.gaierror as exc:
+        raise ProviderSecurityError(
+            f"DNS resolution failed for provider host '{hostname}': {exc}"
+        ) from exc
+
+    for _family, _socktype, _proto, _canonname, sockaddr in addrinfo:
+        ip_str = sockaddr[0]
+        try:
+            resolved_ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+
+        if (
+            allow_http_localhost
+            and resolved_ip.is_loopback
+            and canonical_host in {"localhost", "127.0.0.1", "::1"}
+        ):
+            continue
+
+        if not resolved_ip.is_global:
+            raise ProviderSecurityError(
+                f"Provider host '{hostname}' resolved to non-global address '{ip_str}'."
+            )
+
+
+def create_dns_rebinding_validator(
+    allow_http_localhost: bool = True,
+) -> Callable[[httpx.Request], Any]:
+    """Factory creating an httpx request event hook to validate destination pre-connection."""
+
+    async def validate_request_target(request: httpx.Request) -> None:
+        host = request.url.host
+        if host:
+            validate_host_ip_targets(host, allow_http_localhost=allow_http_localhost)
+
+    return validate_request_target
+
+
 def validate_provider_url(
     url: str,
     allowed_hosts: set[str] | list[str] | None = None,
@@ -165,6 +245,8 @@ def validate_provider_url(
     1. URL scheme must be HTTPS (or HTTP for localhost/127.0.0.1 if allowed).
     2. Host must be present in the allowed_hosts whitelist.
     3. User/Password in URL is strictly forbidden.
+    4. Hostname canonicalized (stripping trailing dots).
+    5. Non-global IP literals and private/internal DNS targets strictly forbidden.
     """
     if not url or not isinstance(url, str):
         raise ProviderSecurityError("Provider base URL must be a non-empty string.")
@@ -173,7 +255,20 @@ def validate_provider_url(
     if not parsed.scheme or not parsed.hostname:
         raise ProviderSecurityError(f"Invalid provider URL format: {url}")
 
-    hostname = parsed.hostname.lower()
+    # Canonicalize hostname (strip trailing dot and lowercase)
+    hostname = parsed.hostname.lower().rstrip(".")
+
+    # Explicit SSRF protection against cloud metadata services and internal domains
+    _blocked_metadata = {
+        "169.254.169.254",
+        "metadata.google.internal",
+        "metadata.internal",
+        "100.100.100.200",
+    }
+    if hostname in _blocked_metadata or hostname.endswith(".internal"):
+        raise ProviderSecurityError(
+            f"Access to cloud metadata or internal endpoint '{hostname}' is strictly forbidden."
+        )
 
     if parsed.username or parsed.password:
         raise ProviderSecurityError("Embedded credentials in provider URL are strictly forbidden.")
@@ -192,11 +287,14 @@ def validate_provider_url(
     if not allowed_hosts:
         raise ProviderSecurityError("Allowed hosts whitelist is required and cannot be empty.")
 
-    allowed_set = {h.lower() for h in allowed_hosts}
+    allowed_set = {h.lower().rstrip(".") for h in allowed_hosts}
     if hostname not in allowed_set:
         raise ProviderSecurityError(
             f"Provider host '{hostname}' is not in the configured host allowlist."
         )
+
+    # Validate IP literal and DNS targets for allowed hosts
+    validate_host_ip_targets(hostname, allow_http_localhost=allow_http_localhost)
 
     return url.strip().rstrip("/")
 
