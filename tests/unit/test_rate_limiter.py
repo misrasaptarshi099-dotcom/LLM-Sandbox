@@ -33,3 +33,29 @@ async def test_rate_limiter_blocks_on_user_limit_exceeded() -> None:
     allowed, msg = await limiter.check_rate_limit(user_id)
     assert allowed is False
     assert "User rate limit exceeded" in str(msg)
+
+
+@pytest.mark.asyncio
+async def test_ip_rate_limit_allows_under_limit() -> None:
+    limiter = RateLimiter()
+    ip = "192.168.1.100"
+
+    for _ in range(60):
+        allowed, msg = await limiter.check_ip_rate_limit(ip)
+        assert allowed is True
+        assert msg is None
+
+
+@pytest.mark.asyncio
+async def test_ip_rate_limit_blocks_on_exceeded() -> None:
+    limiter = RateLimiter()
+    ip = "10.0.0.1"
+
+    # Consume 60 slots (default per-IP limit)
+    for _ in range(60):
+        await limiter.check_ip_rate_limit(ip)
+
+    # 61st request must be blocked
+    allowed, msg = await limiter.check_ip_rate_limit(ip)
+    assert allowed is False
+    assert "IP rate limit exceeded" in str(msg)

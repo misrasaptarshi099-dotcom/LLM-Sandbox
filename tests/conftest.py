@@ -127,6 +127,7 @@ async def seeded_test_env(
         "challenge": challenge,
         "version": version,
         "binding": binding,
+        "system_prompt_ciphertext": ciphertext,
     }
 
 

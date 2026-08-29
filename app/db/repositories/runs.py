@@ -56,6 +56,7 @@ class WorkerRunContext:
     user_id: uuid.UUID
     prompt_hash: str
     prompt_bytes: int
+    prompt_ciphertext: str
     attempt_count: int
     system_prompt_ciphertext: str
     max_input_tokens: int
@@ -77,6 +78,7 @@ class RunRepository:
         model_binding_id: int,
         prompt_hash: str,
         prompt_bytes: int,
+        prompt_ciphertext: str,
     ) -> Run:
         """Create a new run in QUEUED state."""
         run = Run(
@@ -85,6 +87,7 @@ class RunRepository:
             status="QUEUED",
             prompt_hash=prompt_hash,
             prompt_bytes=prompt_bytes,
+            prompt_ciphertext=prompt_ciphertext,
             attempt_count=0,
         )
         self.session.add(run)
@@ -112,6 +115,7 @@ class RunRepository:
                 Run.user_id,
                 Run.prompt_hash,
                 Run.prompt_bytes,
+                Run.prompt_ciphertext,
                 Run.attempt_count,
                 ChallengeVersion.system_prompt_ciphertext,
                 ChallengeModelBinding.max_input_tokens,
@@ -144,15 +148,16 @@ class RunRepository:
             user_id=row[1],
             prompt_hash=row[2],
             prompt_bytes=row[3],
-            attempt_count=row[4],
-            system_prompt_ciphertext=row[5],
-            max_input_tokens=row[6],
-            max_output_tokens=row[7],
-            temperature=row[8],
-            timeout_ms=row[9],
-            model_name=row[10],
-            provider_code=row[11],
-            provider_kind=row[12],
+            prompt_ciphertext=row[4],
+            attempt_count=row[5],
+            system_prompt_ciphertext=row[6],
+            max_input_tokens=row[7],
+            max_output_tokens=row[8],
+            temperature=row[9],
+            timeout_ms=row[10],
+            model_name=row[11],
+            provider_code=row[12],
+            provider_kind=row[13],
         )
 
     async def claim_run(self, run_id: uuid.UUID) -> bool:

@@ -19,6 +19,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     Uuid,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -69,6 +70,10 @@ class Run(Base):
         String(64),
         nullable=False,
     )  # SHA-256 hash of participant prompt
+    prompt_ciphertext: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )  # AES-256-GCM encrypted participant prompt (Rule §2)
     prompt_bytes: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

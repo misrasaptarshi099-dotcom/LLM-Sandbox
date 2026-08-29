@@ -58,7 +58,18 @@ class Settings(BaseSettings):
 
     # --- Rate Limiting ---
     rate_limit_per_user_per_minute: int = 30
+    rate_limit_per_ip_per_minute: int = 60
     rate_limit_global_per_minute: int = 300
+
+    # --- Admission Control ---
+    max_queue_depth: int = 1000
+
+    # --- Provider Concurrency ---
+    provider_max_concurrency: int = 10
+
+    # --- Event-Wide Token Budget ---
+    event_max_input_tokens: int = 10_000_000
+    event_max_output_tokens: int = 5_000_000
 
     # --- Application ---
     app_env: str = "development"

@@ -60,6 +60,53 @@ class RateLimiter:
         self._memory_buckets: dict[str, list[float]] = defaultdict(list)
         self._lua_script = None
 
+    async def check_ip_rate_limit(self, ip_address: str) -> tuple[bool, str | None]:
+        """Check if per-IP rate limit is exceeded.
+
+        Returns (allowed: bool, error_message: str | None).
+        """
+        settings = get_settings()
+        ip_limit = settings.rate_limit_per_ip_per_minute
+        now = time.time()
+        window = 60.0
+        member = f"{now}:{uuid.uuid4().hex}"
+
+        if self.redis is not None:
+            try:
+                ip_key = f"ratelimit:ip:{ip_address}"
+                # Prune + check + record in one round-trip
+                pipe = self.redis.pipeline()
+                pipe.zremrangebyscore(ip_key, "-inf", now - window)
+                pipe.zcard(ip_key)
+                results = await pipe.execute()
+                ip_count = results[1]
+
+                if ip_count >= ip_limit:
+                    return False, "IP rate limit exceeded. Please try again shortly."
+
+                pipe2 = self.redis.pipeline()
+                pipe2.zadd(ip_key, {member: now})
+                pipe2.expire(ip_key, int(window) + 5)
+                await pipe2.execute()
+                return True, None
+            except Exception as exc:
+                logger = get_logger("rate_limiter")
+                logger.warning(
+                    "Redis IP rate limiter unavailable, falling back to memory",
+                    extra={"extra_fields": {"error": str(exc)}},
+                )
+
+        # In-memory fallback
+        ip_key_mem = f"ip:{ip_address}"
+        self._memory_buckets[ip_key_mem] = [
+            t for t in self._memory_buckets[ip_key_mem] if t > now - window
+        ]
+        if len(self._memory_buckets[ip_key_mem]) >= ip_limit:
+            return False, "IP rate limit exceeded. Please try again shortly."
+
+        self._memory_buckets[ip_key_mem].append(now)
+        return True, None
+
     async def check_rate_limit(self, user_id: uuid.UUID) -> tuple[bool, str | None]:
         """Check if user or global rate limit is exceeded.
 

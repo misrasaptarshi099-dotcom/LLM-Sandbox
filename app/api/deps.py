@@ -18,11 +18,13 @@ from app.queue.base import AbstractQueue
 from app.queue.memory_queue import MemoryQueue
 from app.queue.redis_queue import RedisQueue
 from app.services.admission import AdmissionService
+from app.services.cost_tracker import CostTracker
 from app.services.rate_limiter import RateLimiter
 
-# Module singletons for queue and rate limiter
+# Module singletons for queue, rate limiter, and cost tracker
 _queue_singleton: AbstractQueue | None = None
 _rate_limiter_singleton: RateLimiter | None = None
+_cost_tracker_singleton: CostTracker | None = None
 
 
 def get_queue() -> AbstractQueue:
@@ -59,6 +61,25 @@ def set_rate_limiter(limiter: RateLimiter) -> None:
     """Override rate limiter instance (e.g. in tests)."""
     global _rate_limiter_singleton
     _rate_limiter_singleton = limiter
+
+
+def get_cost_tracker() -> CostTracker:
+    """Return the global cost tracker instance."""
+    global _cost_tracker_singleton
+    if _cost_tracker_singleton is None:
+        settings = get_settings()
+        try:
+            client = aioredis.from_url(settings.redis_url, decode_responses=True)
+            _cost_tracker_singleton = CostTracker(redis_client=client)
+        except Exception:
+            _cost_tracker_singleton = CostTracker()
+    return _cost_tracker_singleton
+
+
+def set_cost_tracker(tracker: CostTracker) -> None:
+    """Override cost tracker instance (e.g. in tests)."""
+    global _cost_tracker_singleton
+    _cost_tracker_singleton = tracker
 
 
 async def get_current_user(
@@ -114,6 +135,12 @@ def get_admission_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     queue: Annotated[AbstractQueue, Depends(get_queue)],
     rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+    cost_tracker: Annotated[CostTracker, Depends(get_cost_tracker)],
 ) -> AdmissionService:
     """Provide initialized AdmissionService."""
-    return AdmissionService(session=session, queue=queue, rate_limiter=rate_limiter)
+    return AdmissionService(
+        session=session,
+        queue=queue,
+        rate_limiter=rate_limiter,
+        cost_tracker=cost_tracker,
+    )
