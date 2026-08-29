@@ -165,3 +165,49 @@ async def test_submit_run_queue_failure_rolls_back_db(
 
     runs = (await test_db_session.execute(select(Run))).scalars().all()
     assert len(runs) == 0
+
+
+async def test_submit_run_budget_reservation_exhaustion(
+    client: AsyncClient,
+    seeded_test_env: dict,
+) -> None:
+    """Submitting two requests whose combined reservations exceed budget causes 2nd to fail."""
+    from unittest.mock import patch
+
+    from app.api.deps import set_cost_tracker
+    from app.core.config import Settings
+    from app.services.cost_tracker import CostTracker
+
+    # Binding has max_input_tokens=2048, max_output_tokens=512.
+    # Set event budget so 1 request fits (2048 <= 3000), but 2 requests exceed it (4096 > 3000).
+    small_settings = Settings(
+        event_max_input_tokens=3000,
+        event_max_output_tokens=3000,
+    )
+    custom_tracker = CostTracker()
+    set_cost_tracker(custom_tracker)
+
+    with patch("app.services.cost_tracker.get_settings", return_value=small_settings):
+        # 1. First run admission succeeds
+        res1 = await client.post(
+            "/v1/runs",
+            json={
+                "challenge_slug": "prompt-injection-01",
+                "prompt": "First prompt within budget",
+            },
+        )
+        assert res1.status_code == 202
+
+        # 2. Second run reservation pushes total to 4096 > 3000 -> 503
+        res2 = await client.post(
+            "/v1/runs",
+            json={
+                "challenge_slug": "prompt-injection-01",
+                "prompt": "Second prompt exceeding budget",
+            },
+        )
+        assert res2.status_code == 503
+        assert "token budget exhausted" in res2.json()["error"]["message"].lower()
+
+    # Reset cost tracker
+    set_cost_tracker(CostTracker())

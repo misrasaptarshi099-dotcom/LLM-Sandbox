@@ -9,6 +9,7 @@ Rules §2, §3, Architecture §5, Implementation Plan Phase 5:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -75,11 +76,19 @@ class ProviderRouter:
     def __init__(self) -> None:
         self._providers: dict[str, LLMProvider] = {}
         self._circuit_breakers: dict[str, CircuitBreaker] = {}
+        self._concurrency_semaphores: dict[str, asyncio.Semaphore] = {}
 
     def get_circuit_breaker(self, provider_code: str) -> CircuitBreaker:
         if provider_code not in self._circuit_breakers:
             self._circuit_breakers[provider_code] = CircuitBreaker()
         return self._circuit_breakers[provider_code]
+
+    def get_concurrency_semaphore(self, provider_code: str) -> asyncio.Semaphore:
+        """Return a per-provider concurrency semaphore (Phase 7)."""
+        if provider_code not in self._concurrency_semaphores:
+            max_concurrency = get_settings().provider_max_concurrency
+            self._concurrency_semaphores[provider_code] = asyncio.Semaphore(max_concurrency)
+        return self._concurrency_semaphores[provider_code]
 
     def get_provider(
         self,

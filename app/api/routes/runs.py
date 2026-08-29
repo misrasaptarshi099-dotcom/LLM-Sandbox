@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_admission_service, get_current_user
@@ -39,6 +39,7 @@ router = APIRouter(prefix="/v1/runs", tags=["runs"])
 )
 async def submit_run(
     request: RunCreateRequest,
+    raw_request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     admission_service: Annotated[AdmissionService, Depends(get_admission_service)],
 ) -> RunCreateResponse:
@@ -47,9 +48,11 @@ async def submit_run(
     Returns 202 Accepted with a queued run identifier immediately.
     Never blocks on model generation.
     """
+    client_ip = raw_request.client.host if raw_request.client else None
     return await admission_service.admit_run(
         user_id=current_user.id,
         request=request,
+        client_ip=client_ip,
     )
 
 

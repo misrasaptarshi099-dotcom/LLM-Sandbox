@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.api.errors import setup_exception_handlers
 from app.api.routes import challenges, health, runs
@@ -34,12 +35,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     """Application factory."""
+    settings = get_settings()
     app = FastAPI(
         title="LLM Sandbox",
         description="Prompt Injection Challenge Backend — TechnoVIT / GDG VIT Chennai",
         version="0.1.0",
         lifespan=lifespan,
     )
+    # Configure trusted proxy headers handling at ASGI boundary
+    app.add_middleware(
+        ProxyHeadersMiddleware,
+        trusted_hosts=settings.trusted_proxies,
+    )
+
     # Register exception handlers
     setup_exception_handlers(app)
 

@@ -169,6 +169,7 @@ async def test_run_repository_lifecycle_and_atomic_claim(
         model_binding_id=binding.id,
         prompt_hash=p_hash,
         prompt_bytes=len(prompt.encode("utf-8")),
+        prompt_ciphertext=encrypt_system_prompt(prompt),
     )
     assert run.status == "QUEUED"
     assert run.attempt_count == 0
@@ -228,6 +229,7 @@ async def test_run_repository_keyset_pagination(
             model_binding_id=binding.id,
             prompt_hash=hash_text(f"prompt {i}"),
             prompt_bytes=10,
+            prompt_ciphertext=encrypt_system_prompt(f"prompt {i}"),
         )
         runs.append(r)
     await db_session.commit()
@@ -305,6 +307,7 @@ async def test_run_repository_rejects_invalid_terminal_status(
         model_binding_id=binding.id,
         prompt_hash=hash_text("test prompt"),
         prompt_bytes=11,
+        prompt_ciphertext=encrypt_system_prompt("test prompt"),
     )
     await repo.claim_run(run.id)
 

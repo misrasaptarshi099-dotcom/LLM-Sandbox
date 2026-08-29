@@ -52,6 +52,32 @@ return {1, 'OK'}
 """
 
 
+_LUA_IP_RATE_LIMIT_SCRIPT = """
+local ip_key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local ip_limit = tonumber(ARGV[3])
+local member = ARGV[4]
+
+local clear_before = now - window
+
+-- Prune expired members
+redis.call('ZREMRANGEBYSCORE', ip_key, '-inf', clear_before)
+
+-- Check current count
+local ip_count = redis.call('ZCARD', ip_key)
+if ip_count >= ip_limit then
+    return {0, 'IP_LIMIT'}
+end
+
+-- Allowed: record attempt and refresh TTL
+redis.call('ZADD', ip_key, now, member)
+redis.call('EXPIRE', ip_key, math.ceil(window) + 5)
+
+return {1, 'OK'}
+"""
+
+
 class RateLimiter:
     """Sliding-window counter rate limiter."""
 
@@ -59,6 +85,51 @@ class RateLimiter:
         self.redis = redis_client
         self._memory_buckets: dict[str, list[float]] = defaultdict(list)
         self._lua_script = None
+
+    async def check_ip_rate_limit(self, ip_address: str) -> tuple[bool, str | None]:
+        """Check if per-IP rate limit is exceeded.
+
+        Returns (allowed: bool, error_message: str | None).
+        """
+        settings = get_settings()
+        ip_limit = settings.rate_limit_per_ip_per_minute
+        now = time.time()
+        window = 60.0
+        member = f"{now}:{uuid.uuid4().hex}"
+
+        if self.redis is not None:
+            try:
+                ip_key = f"ratelimit:ip:{ip_address}"
+                res = await self.redis.eval(
+                    _LUA_IP_RATE_LIMIT_SCRIPT,
+                    1,
+                    ip_key,
+                    str(now),
+                    str(window),
+                    str(ip_limit),
+                    member,
+                )
+                allowed = res[0]
+                if allowed == 1:
+                    return True, None
+                return False, "IP rate limit exceeded. Please try again shortly."
+            except Exception as exc:
+                logger = get_logger("rate_limiter")
+                logger.warning(
+                    "Redis IP rate limiter unavailable, falling back to memory",
+                    extra={"extra_fields": {"error": str(exc)}},
+                )
+
+        # In-memory fallback
+        ip_key_mem = f"ip:{ip_address}"
+        self._memory_buckets[ip_key_mem] = [
+            t for t in self._memory_buckets[ip_key_mem] if t > now - window
+        ]
+        if len(self._memory_buckets[ip_key_mem]) >= ip_limit:
+            return False, "IP rate limit exceeded. Please try again shortly."
+
+        self._memory_buckets[ip_key_mem].append(now)
+        return True, None
 
     async def check_rate_limit(self, user_id: uuid.UUID) -> tuple[bool, str | None]:
         """Check if user or global rate limit is exceeded.
