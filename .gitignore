@@ -44,3 +44,9 @@ migrations/versions/__pycache__/
 
 # Docker
 *.log
+
+# Documentation & spec notes (keep README.md only)
+*.md
+!README.md
+!readme.md
+!Readme.md
