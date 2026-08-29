@@ -32,7 +32,7 @@ async def seed(
     """
     target_session_factory = custom_session_factory or async_session_factory
 
-    print("🌱 Starting database seeding...")
+    print("[INFO] Starting database seeding...")
 
     async with target_session_factory() as session:
         # 1. Seed Providers
@@ -168,7 +168,7 @@ async def seed(
                     session.add(binding)
 
         await session.commit()
-        print("✅ Database seeding completed successfully.")
+        print("[SUCCESS] Database seeding completed successfully.")
 
 
 if __name__ == "__main__":
