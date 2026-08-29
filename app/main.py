@@ -43,7 +43,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             extra={"extra_fields": {"notice": str(exc)}},
         )
 
+    worker_task = None
+    if settings.embedded_worker:
+        import asyncio
+
+        from app.worker import run_worker
+
+        worker_task = asyncio.create_task(run_worker(max_concurrent=10))
+        logger.info("Embedded background worker started successfully")
+
     yield
+
+    if worker_task is not None:
+        worker_task.cancel()
+        logger.info("Embedded background worker stopped")
+
     logger.info("LLM Sandbox shutting down")
 
 

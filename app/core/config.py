@@ -95,6 +95,7 @@ class Settings(BaseSettings):
     # --- Application ---
     app_env: str = "development"
     log_level: str = "INFO"
+    embedded_worker: bool = False
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> Settings:
