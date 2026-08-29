@@ -199,8 +199,8 @@ class ExecutionService:
                 breaker.record_failure(exc)
                 if not exc.retryable or attempt >= MAX_INTERNAL_RETRIES:
                     break
-                # Exponential backoff before next attempt
-                backoff = BACKOFF_BASE_SECONDS * (2**attempt)
+                # Use provider-specified retry_after or exponential backoff
+                backoff = getattr(exc, "retry_after", None) or (BACKOFF_BASE_SECONDS * (2**attempt))
                 logger.info(
                     "Retrying provider call",
                     extra={

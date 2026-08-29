@@ -42,9 +42,9 @@ def create_engine_from_url(url: str | None = None) -> AsyncEngine:
     if not db_url.startswith("sqlite"):
         engine_kwargs.update(
             {
-                "pool_size": 10,
-                "max_overflow": 5,
-                "pool_timeout": 2.0,
+                "pool_size": 30,
+                "max_overflow": 20,
+                "pool_timeout": 30.0,
                 "pool_pre_ping": True,
             }
         )

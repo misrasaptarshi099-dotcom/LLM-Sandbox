@@ -19,6 +19,7 @@ from app.providers.base import (
     ProviderAuthError,
     ProviderError,
     ProviderInvalidRequestError,
+    ProviderRateLimitError,
 )
 from app.providers.fake import FakeLLMProvider
 from app.providers.gemini import GeminiProvider
@@ -33,7 +34,7 @@ class CircuitBreaker:
 
     def __init__(
         self,
-        failure_threshold: int = 5,
+        failure_threshold: int = 15,
         recovery_timeout_seconds: float = 30.0,
     ) -> None:
         self.failure_threshold = failure_threshold
@@ -56,8 +57,11 @@ class CircuitBreaker:
         self._state = "CLOSED"
 
     def record_failure(self, error: Exception) -> None:
-        # Do not trip circuit breaker on deterministic client errors (400, 401, 403, 422)
-        if isinstance(error, (ProviderInvalidRequestError, ProviderAuthError)):
+        # Do not trip on deterministic client errors or rate limits
+        # (rate limits are handled by key pool & model cascade)
+        if isinstance(
+            error, (ProviderInvalidRequestError, ProviderAuthError, ProviderRateLimitError)
+        ):
             return
 
         self._failure_count += 1
