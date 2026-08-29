@@ -1,7 +1,6 @@
 databases:
   - name: llm-sandbox-db
     databaseName: llm_sandbox
-    user: postgres
     plan: free
 
 services:
