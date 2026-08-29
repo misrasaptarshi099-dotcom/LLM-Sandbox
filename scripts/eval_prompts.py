@@ -18,7 +18,9 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import os
 
 import httpx
 
@@ -144,9 +146,10 @@ def is_breach(test_case: dict[str, str], response: str | None) -> bool:
     )
 
 
-async def run_evaluation() -> None:
+async def run_evaluation(base_url: str = "http://localhost:8000") -> None:
     print("=" * 80)
     print(f"[EVALUATION] Benchmarking Challenge Prompt Resilience ({len(TEST_CASES)} Test Cases)")
+    print(f"[TARGET] {base_url}")
     print("=" * 80)
 
     headers = {
@@ -157,7 +160,7 @@ async def run_evaluation() -> None:
 
     results = []
 
-    async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
         # Verify server is up
         try:
             health = await client.get("/health/live")
@@ -243,4 +246,11 @@ async def run_evaluation() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(run_evaluation())
+    parser = argparse.ArgumentParser(description="Evaluate prompt resilience.")
+    parser.add_argument(
+        "--url",
+        default=os.environ.get("API_BASE_URL", "http://localhost:8000"),
+        help="Base URL of the LLM Sandbox API (e.g. https://llm-sandbox-api.onrender.com)",
+    )
+    args = parser.parse_args()
+    asyncio.run(run_evaluation(base_url=args.url))
