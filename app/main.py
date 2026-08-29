@@ -30,6 +30,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_logging(level=settings.log_level)
     logger = get_logger("main")
     logger.info("LLM Sandbox starting", extra={"extra_fields": {"env": settings.app_env}})
+
+    # Auto-initialize database schema and seed challenge if needed on startup
+    try:
+        from scripts.seed_challenge import seed
+
+        await seed()
+        logger.info("Database schema and challenge data verified/initialized")
+    except Exception as exc:
+        logger.warning(
+            "Database auto-init notice",
+            extra={"extra_fields": {"notice": str(exc)}},
+        )
+
     yield
     logger.info("LLM Sandbox shutting down")
 

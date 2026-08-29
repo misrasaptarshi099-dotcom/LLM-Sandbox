@@ -9,6 +9,7 @@ Rules §2, §3, Architecture §5, Implementation Plan Phase 5:
 
 from __future__ import annotations
 
+import contextlib
 import time
 from typing import Any
 
@@ -29,10 +30,16 @@ from app.providers.base import (
     create_dns_rebinding_validator,
     validate_provider_url,
 )
+from app.providers.key_pool import SlidingWindowKeyPool
+
+DEFAULT_FALLBACK_MODELS: list[str] = [
+    "gemini-3.1-flash-lite",
+    "gemini-flash-lite-latest",
+]
 
 
 class GeminiProvider(LLMProvider):
-    """Google Gemini REST API adapter."""
+    """Google Gemini REST API adapter with multi-key pool and model cascade fallback."""
 
     def __init__(
         self,
@@ -41,6 +48,8 @@ class GeminiProvider(LLMProvider):
         timeout_seconds: float = 30.0,
         allowed_hosts: list[str] | None = None,
         client: httpx.AsyncClient | None = None,
+        max_rpm_per_key: int = 14,
+        fallback_models: list[str] | None = None,
     ) -> None:
         settings = get_settings()
         self.api_key = api_key or settings.gemini_api_key
@@ -48,6 +57,16 @@ class GeminiProvider(LLMProvider):
         self.allowed_hosts = allowed_hosts or settings.provider_allowed_hosts
         self.base_url = validate_provider_url(raw_base_url, self.allowed_hosts)
         self.timeout_seconds = timeout_seconds
+        self.fallback_models = (
+            fallback_models if fallback_models is not None else DEFAULT_FALLBACK_MODELS
+        )
+
+        # Multi-key sliding window quota pool
+        raw_key_string = self.api_key or ""
+        parsed_keys = [k.strip() for k in raw_key_string.split(",") if k.strip()]
+        self.key_pool: SlidingWindowKeyPool | None = (
+            SlidingWindowKeyPool(parsed_keys, max_rpm=max_rpm_per_key) if parsed_keys else None
+        )
 
         self._client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(self.timeout_seconds, connect=10.0),
@@ -57,12 +76,79 @@ class GeminiProvider(LLMProvider):
         self._owned_client = client is None
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
-        effective_key = request.api_key or self.api_key
-        if not effective_key:
+        """Execute request across healthy keys in pool, cascading to fallback models on 429."""
+        if request.api_key:
+            return await self._call_gemini_api(request, request.api_key)
+
+        if not self.key_pool:
             raise ProviderAuthError(
                 "Gemini API key is not configured or provided.",
                 provider="gemini",
             )
+
+        models_to_try = [request.model_name] + [
+            m for m in self.fallback_models if m != request.model_name
+        ]
+        last_error: Exception | None = None
+
+        for model_candidate in models_to_try:
+            req = LLMRequest(
+                system_prompt=request.system_prompt,
+                user_prompt=request.user_prompt,
+                model_name=model_candidate,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+                stop_sequences=request.stop_sequences,
+                timeout_seconds=request.timeout_seconds,
+                api_key=request.api_key,
+                extra_headers=request.extra_headers,
+            )
+            max_attempts = self.key_pool.total_keys
+            for attempt_idx in range(max_attempts):
+                key = await self.key_pool.acquire_key(
+                    model=model_candidate,
+                    wait_if_unavailable=False,
+                )
+                if key is None:
+                    # All keys currently in cooldown for this model, try next fallback model
+                    break
+                try:
+                    return await self._call_gemini_api(req, key)
+                except ProviderRateLimitError as exc:
+                    cooldown = exc.retry_after or 5.0
+                    await self.key_pool.report_rate_limit(
+                        key,
+                        model=model_candidate,
+                        cooldown_seconds=cooldown,
+                    )
+                    last_error = exc
+                    if attempt_idx == max_attempts - 1:
+                        # Move to the next fallback model candidate
+                        break
+                except Exception as exc:
+                    last_error = exc
+                    break
+
+        # If all models are temporarily busy in the current 60s window,
+        # wait for the earliest slot to open rather than failing the run!
+        try:
+            key = await self.key_pool.acquire_key(
+                model=request.model_name,
+                wait_if_unavailable=True,
+            )
+            if key is not None:
+                return await self._call_gemini_api(request, key)
+        except Exception as exc:
+            last_error = exc
+
+        if isinstance(last_error, ProviderError):
+            raise last_error
+        raise ProviderRateLimitError(
+            "All Gemini API keys and fallback models exhausted their quota.",
+            provider="gemini",
+        )
+
+    async def _call_gemini_api(self, request: LLMRequest, effective_key: str) -> LLMResponse:
 
         endpoint = f"{self.base_url}/models/{request.model_name}:generateContent"
 
@@ -118,14 +204,30 @@ class GeminiProvider(LLMProvider):
 
         # Classify HTTP status codes
         if response.status_code == 429:
+            retry_after: float | None = None
             retry_after_hdr = response.headers.get("retry-after")
-            retry_after = (
-                float(retry_after_hdr) if retry_after_hdr and retry_after_hdr.isdigit() else None
-            )
+            if retry_after_hdr and retry_after_hdr.isdigit():
+                retry_after = float(retry_after_hdr)
+            else:
+                with contextlib.suppress(Exception):
+                    err_json = response.json()
+                    for detail in err_json.get("error", {}).get("details", []):
+                        if "retryDelay" in detail:
+                            delay_str = str(detail["retryDelay"]).rstrip("s")
+                            retry_after = float(delay_str)
+                            break
+                    if retry_after is None:
+                        import re
+
+                        m = re.search(r"Please retry in ([0-9.]+)s", response.text)
+                        if m:
+                            retry_after = float(m.group(1))
+
+            effective_delay = retry_after if retry_after_hdr else max(retry_after or 5.0, 5.0)
             raise ProviderRateLimitError(
                 f"Gemini rate limit exceeded (HTTP 429): {response.text}",
                 provider="gemini",
-                retry_after=retry_after,
+                retry_after=effective_delay,
             )
         if response.status_code in {401, 403}:
             raise ProviderAuthError(

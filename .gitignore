@@ -29,6 +29,10 @@ env/
 Thumbs.db
 desktop.ini
 
+# SQLite databases
+*.db
+*.sqlite3
+
 # Testing
 .pytest_cache/
 htmlcov/
